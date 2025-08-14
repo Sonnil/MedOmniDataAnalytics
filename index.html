@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Medical Affairs Analytics Demo</title>
+
+  <!-- Chart.js + Plugins (CDN) -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3"></script>
+
+  <!-- Optional: chartjs-chart-geo for the world map choropleth. -->
+  <script src="https://cdn.jsdelivr.net/npm/topojson-client@3"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-geo@4.3.0/build/index.umd.min.js"></script>
+
+  <style>
+    :root{
+      --bg:#0b1020; --card:#121833; --muted:#94a3b8; --text:#e2e8f0; --accent:#7dd3fc; --accent-2:#a78bfa;
+      --good:#22c55e; --warn:#f59e0b; --bad:#ef4444;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{ margin:0; background:linear-gradient(180deg,#0b1020 0%,#0b1020 60%,#0a0f1c 100%); color:var(--text); font:15px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji" }
+    .app{display:grid; grid-template-columns:260px 1fr; min-height:100vh}
+    aside{ background:#0a0f1c; border-right:1px solid #1f2945; padding:16px; position:sticky; top:0; height:100dvh; overflow:auto }
+    .logo{display:flex; gap:10px; align-items:center; margin-bottom:16px}
+    .logo-circle{width:34px; height:34px; border-radius:50%; background:linear-gradient(135deg,var(--accent),var(--accent-2))}
+    h1{font-size:16px; margin:0}
+    .small{color:var(--muted); font-size:12px}
+    nav{display:flex; flex-direction:column; gap:6px; margin-top:12px}
+    nav a{ text-decoration:none; color:var(--text); padding:10px 12px; border-radius:8px; display:flex; gap:10px; align-items:center; border:1px solid transparent }
+    nav a:hover{ background:#0f1730; border-color:#1f2945 }
+    nav a.active{ background:#141d3b; border-color:#28345d }
+    main{padding:20px}
+    .header{ display:flex; gap:16px; align-items:center; flex-wrap:wrap; margin-bottom:16px }
+    .filters{ display:flex; gap:8px; flex-wrap:wrap; margin-left:auto }
+    select, .chip{ background:#0f1730; border:1px solid #27325a; color:var(--text); padding:8px 10px; border-radius:8px }
+    .grid{ display:grid; grid-template-columns: repeat(12, 1fr); gap:12px }
+    .card{ background:var(--card); border:1px solid #1f2945; border-radius:12px; padding:14px; min-height:120px }
+    .card h3{margin:0 0 8px 0; font-size:14px; color:#cbd5e1}
+    .kpis{display:grid; grid-template-columns:repeat(4,1fr); gap:12px}
+    .kpi{background:#0f1730; border:1px solid #253059; border-radius:12px; padding:12px}
+    .kpi .val{font-size:22px; font-weight:700}
+    .kpi .delta{font-size:12px}
+    .delta.up{color:var(--good)} .delta.down{color:var(--bad)} .delta.flat{color:var(--muted)}
+    .col-3{grid-column:span 3} .col-4{grid-column:span 4} .col-5{grid-column:span 5}
+    .col-6{grid-column:span 6} .col-7{grid-column:span 7} .col-8{grid-column:span 8} .col-12{grid-column:span 12}
+    .table{width:100%; border-collapse: collapse; font-size:14px}
+    .table th,.table td{padding:8px 10px; border-bottom:1px solid #223055}
+    .badge{padding:2px 6px; border-radius:6px; font-size:12px; border:1px solid #2a3a6a; background:#0f1730; color:#e5e7eb}
+    .heat-grid{ display:grid; gap:4px; grid-template-columns:repeat(8, minmax(0,1fr)); }
+    .cell{ aspect-ratio:1/1; border-radius:6px; display:flex; align-items:center; justify-content:center; font-size:11px; border:1px solid #223055; background:#101a39; color:#dbeafe }
+    footer{margin-top:14px; color:var(--muted); font-size:12px}
+    @media (max-width: 1100px){ .app{grid-template-columns:72px 1fr} aside{padding:8px} nav a span.label{display:none} .kpis{grid-template-columns:repeat(2,1fr)} .col-6,.col-7,.col-8{grid-column:span 12} }
+    @media (max-width: 720px){ .grid{grid-template-columns:repeat(6,1fr)} .col-4{grid-column:span 6} .kpis{grid-template-columns:1fr} }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside>
+      <div class="logo">
+        <div class="logo-circle"></div>
+        <div>
+          <h1>MedAffairs BI</h1>
+          <div class="small">Demo analytics suite</div>
+        </div>
+      </div>
+      <nav id="nav"></nav>
+      <footer>9 Demo. Sample data only.</footer>
+    </aside>
+
+    <main>
+      <div class="header">
+        <div>
+          <div style="font-weight:700" id="pageTitle">Dashboard</div>
+          <div class="small" id="pageSubtitle">Interactive demo</div>
+        </div>
+        <div class="filters">
+          <select id="filterTA"><option value="All">All TAs</option></select>
+          <select id="filterProduct"><option value="All">All products</option></select>
+          <select id="filterCountry"><option value="All">All countries</option></select>
+          <select id="filterSegment"><option value="All">All HCP segments</option></select>
+        </div>
+      </div>
+
+      <!-- DASHBOARD CONTAINER -->
+
+      <!doctype html>
+      <html lang="en">
+      <head>
+      <meta charset="utf-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1" />
+      <title>Medical Affairs Analytics Demo</title>
+
+      <!-- Chart.js + Plugins (CDN) -->
+      <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3"></script>
+
+      <!-- Optional: chartjs-chart-geo for the world map choropleth.
+           Works offline if you save the two <script> files locally later. -->
+      <script src="https://cdn.jsdelivr.net/npm/topojson-client@3"></script>
+      <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-geo@4.3.0/build/index.umd.min.js"></script>
+
+      <style>
+      :root{
+        --bg:#0b1020; --card:#121833; --muted:#94a3b8; --text:#e2e8f0; --accent:#7dd3fc; --accent-2:#a78bfa;
+        --good:#22c55e; --warn:#f59e0b; --bad:#ef4444;
+      }
+      *{box-sizing:border-box}
+      html,body{height:100%}
+      body{
+        margin:0; background:linear-gradient(180deg,#0b1020 0%,#0b1020 60%,#0a0f1c 100%);
+        color:var(--text); font: 15px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
+      }
+      .app{display:grid; grid-template-columns:260px 1fr; min-height:100vh}
+      aside{
+        background:#0a0f1c; border-right:1px solid #1f2945; padding:16px; position:sticky; top:0; height:100dvh; overflow:auto;
+      }
+      .logo{display:flex; gap:10px; align-items:center; margin-bottom:16px}
+      .logo-circle{width:34px; height:34px; border-radius:50%; background:linear-gradient(135deg,var(--accent),var(--accent-2))}
+      h1{font-size:16px; margin:0}
+      .small{color:var(--muted); font-size:12px}
+      nav{display:flex; flex-direction:column; gap:6px; margin-top:12px}
+      nav a{
+        text-decoration:none; color:var(--text); padding:10px 12px; border-radius:8px; display:flex; gap:10px; align-items:center;
+        border:1px solid transparent;
+      }
+      nav a:hover{background:#0f1730; border-color:#1f2945}
+      nav a.active{background:#141d3b; border-color:#28345d}
+      main{padding:20px}
+      .header{
+        display:flex; gap:16px; align-items:center; flex-wrap:wrap; margin-bottom:16px
+      }
+      .filters{
+        display:flex; gap:8px; flex-wrap:wrap; margin-left:auto
+      }
+      select, .chip{
+        background:#0f1730; border:1px solid #27325a; color:var(--text); padding:8px 10px; border-radius:8px
+      }
+      .grid{
+        display:grid; grid-template-columns: repeat(12, 1fr); gap:12px
+      }
+      .card{
+        background:var(--card); border:1px solid #1f2945; border-radius:12px; padding:14px; min-height:120px; box-shadow:0 1px 0 rgba(255,255,255,0.03) inset
+      }
+      .card h3{margin:0 0 8px 0; font-size:14px; color:#cbd5e1}
+      .kpis{display:grid; grid-template-columns:repeat(4,1fr); gap:12px}
+      .kpi{background:#0f1730; border:1px solid #253059; border-radius:12px; padding:12px}
+      .kpi .val{font-size:22px; font-weight:700}
+      .kpi .delta{font-size:12px}
+      .delta.up{color:var(--good)} .delta.down{color:var(--bad)} .delta.flat{color:var(--muted)}
+      .col-3{grid-column:span 3} .col-4{grid-column:span 4} .col-5{grid-column:span 5}
+      .col-6{grid-column:span 6} .col-7{grid-column:span 7} .col-8{grid-column:span 8} .col-12{grid-column:span 12}
+
+      .table{width:100%; border-collapse: collapse; font-size:14px}
+      .table th,.table td{padding:8px 10px; border-bottom:1px solid #223055}
+      .table th{color:#cbd5e1; text-align:left}
+      .badge{padding:2px 6px; border-radius:6px; font-size:12px; border:1px solid #2a3a6a; background:#0f1730; color:#e5e7eb}
+      .heat-grid{
+        display:grid; gap:4px; grid-template-columns:repeat(8, minmax(0,1fr));
+      }
+      .cell{
+        aspect-ratio:1/1; border-radius:6px; display:flex; align-items:center; justify-content:center; font-size:11px;
+        border:1px solid #223055; background:#101a39; color:#dbeafe
+      }
+      .cell[data-val]{position:relative}
+      .cell[data-val]::after{content:""; position:absolute; inset:2px; border-radius:4px; opacity:0.85; background:linear-gradient(180deg, rgba(125,211,252,0.0), rgba(125,211,252,0.35));}
+      footer{margin-top:14px; color:var(--muted); font-size:12px}
+
+      /* Responsive */
+      @media (max-width: 1100px){
+        .app{grid-template-columns: 72px 1fr}
+        aside{padding:8px}
+        nav a span.label{display:none}
+        .kpis{grid-template-columns:repeat(2,1fr)}
+        .col-6,.col-7,.col-8{grid-column:span 12}
+      }
+      @media (max-width: 720px){
+        .grid{grid-template-columns:repeat(6,1fr)}
+        .col-4{grid-column:span 6}
+        .kpis{grid-template-columns:1fr}
+      }
+      </style>
+      </head>
+      <body>
+      <div class="app">
+        <aside>
+          <div class="logo">
+            <div class="logo-circle"></div>
+            <div>
+              <h1>MedAffairs BI</h1>
+              <div class="small">Demo analytics suite</div>
+            </div>
+          </div>
+          <nav id="nav"></nav>
+          <footer>© Demo. Sample data only.</footer>
+        </aside>
+
+        <main>
+          <div class="header">
+            <div>
+              <div style="font-weight:700" id="pageTitle">Dashboard</div>
+              <div class="small" id="pageSubtitle">Interactive demo</div>
+            </div>
+            <div class="filters">
+              <select id="filterTA"><option value="All">All TAs</option></select>
+              <select id="filterProduct"><option value="All">All products</option></select>
+              <select id="filterCountry"><option value="All">All countries</option></select>
+              <select id="filterSegment"><option value="All">All HCP segments</option></select>
+            </div>
+          </div>
+
+          <!-- DASHBOARD CONTAINER -->
+          <div id="view" class="grid"></div>
+        </main>
+      </div>
+
+      <script>
+      /* ---------------------------
+         Demo Data (mock, pharma-flavored)
+      ---------------------------- */
+      const TAs = ["Oncology","Immunology","Cardio","Neuro"];
+      const Products = ["Alpha-01","Beta-Plus","Cardex","NeuroQ"];
+      const Countries = ["US","DE","FR","UK","ES","IT","BR","JP","CN","CA"];
+      const Segments = ["KOL","Specialist","GP","Nurse"];
+
+      function rand(n=1000){return Math.round(Math.random()*n)}
+      function randBetween(min,max){return Math.round(min + Math.random()*(max-min))}
+      function pct(){return +(Math.random()*100).toFixed(1)}
+
+      const clock = (()=> {
+        const now = new Date();
+        const qs = [];
+        let year = now.getFullYear() - 3, q = 1;
+        for(let i=0;i<12;i++){
+          qs.push({label:`Q${q} ${year}`, date: new Date(year, (q-1)*3, 1)});
+          q++; if(q===5){q=1; year++;}
+        }
+        return {quarters: qs};
+      })();
+
+      function makeInteractions(){
+        const channels = ["F2F","Remote","CLM/IVA","Email","Web","Events"];
+        const rows = [];
+        Countries.forEach(c=>{
+          channels.forEach(ch=>{
+            rows.push({
+              country:c, channel:ch, ta:TAs[randBetween(0,TAs.length-1)],
+              product:Products[randBetween(0,Products.length-1)],
+              segment:Segments[randBetween(0,Segments.length-1)],
+              interactions: randBetween(50, 1200),
+              avgCallMin: randBetween(6,25),
+              freqPerHCP: +(Math.random()*4).toFixed(1)
+            });
+          });
+        });
+        return {channels, rows};
+      }
+
+      function makeEvents(){
+        const events = ["ASCO","ESMO","AHA","EAN","EULAR","ASH","ERS","ESICM","WCN"];
+        const rows = events.map(name=>({
+          name,
+          attendees: randBetween(500, 12000),
+          boothTimeMin: randBetween(2000, 20000),
+          surveyRelevance: randBetween(60,95),
+          insights: randBetween(10,120),
+          followupsDonePct: randBetween(40,95)
+        }));
+        return rows;
+      }
+
+      const DATA = {
+        interactions: makeInteractions(),
+        events: makeEvents(),
+        progressByQuarter: clock.quarters.map((q,i)=>({date:q.date, label:q.label, planned: randBetween(5000,12000), actual: randBetween(4200,11500)}))
+      }
+
+      /* ---------------------------
+         Helpers (DOM, charts, filters)
+      ---------------------------- */
+      const $ = (sel, root=document)=>root.querySelector(sel);
+      function el(tag, cls, html){ const n=document.createElement(tag); if(cls) n.className=cls; if(html!==undefined) n.innerHTML=html; return n; }
+      function fmt(n){ return n.toLocaleString() }
+
+      function makeChart(ctx, cfg){ if(ctx._chart){ ctx._chart.destroy(); } const c = new Chart(ctx, cfg); ctx._chart = c; return c; }
+
+      function selectOptions(sel, arr){ sel.innerHTML = `<option value="All">All</option>` + arr.map(x=>`<option>${x}</option>`).join(""); }
+
+      selectOptions($("#filterTA"), TAs);
+      selectOptions($("#filterProduct"), Products);
+      selectOptions($("#filterCountry"), Countries);
+      selectOptions($("#filterSegment"), Segments);
+
+      const FILTER = { ta:"All", product:"All", country:"All", segment:"All" };
+      for(const [id,key] of [["filterTA","ta"],["filterProduct","product"],["filterCountry","country"],["filterSegment","segment"]]){
+        $("#"+id).addEventListener("change", e=>{ FILTER[key]=e.target.value; route(); });
+      }
+      function passFilters(row){
+        return (FILTER.ta==="All"||row.ta===FILTER.ta)
+          && (FILTER.product==="All"||row.product===FILTER.product)
+          && (FILTER.country==="All"||row.country===FILTER.country)
+          && (FILTER.segment==="All"||row.segment===FILTER.segment);
+      }
+
+      /* ---------------------------
+         Core routes
+      ---------------------------- */
+      const ROUTES = [
+        {id:"medical",  title:"1) Medical Activity Reporting",  subtitle:"Field + omnichannel activity", render: renderMedical},
+        {id:"perception",title:"2) Perception / NPS / KAB",     subtitle:"Awareness, attitudes, behavior", render: renderPerception},
+        {id:"events",    title:"3) Congresses & Events",         subtitle:"ROI and strategic value", render: renderEvents},
+        {id:"learning",  title:"4) Learning & Capability",       subtitle:"Readiness & skills", render: renderLearning},
+        {id:"digital",   title:"5) Digital & Media",             subtitle:"Digital influence & content", render: renderDigital},
+        {id:"foundational",title:"6) Foundational Data & Insights", subtitle:"Data health & readiness", render: renderFoundational},
+      ];
+
+      function setupNav(){
+        const nav = $("#nav"); nav.innerHTML=''; ROUTES.forEach(r=>{ const a = el("a","",`<span class="dot" style="width:8px;height:8px;border-radius:50%;background:var(--accent)"></span><span class="label">${r.title}</span>`); a.href = `#/${r.id}`; nav.appendChild(a); }); updateActiveNav();
+      }
+      function updateActiveNav(){ const hash = location.hash.replace("#/",""); [...$("#nav").children].forEach(a=> a.classList.toggle('active', a.getAttribute('href')==('#/'+hash))); }
+
+      function clearView(){ const v=$("#view"); v.innerHTML=''; return v; }
+
+      /* --- route implementations (simplified, but functional) --- */
+      function renderMedical(){ const view = clearView(); $("#pageTitle").textContent = ROUTES[0].title; $("#pageSubtitle").textContent = ROUTES[0].subtitle; const subset = DATA.interactions.rows.filter(passFilters); const total = subset.reduce((a,b)=>a+b.interactions,0); const kpiWrap = el('div','kpis col-12'); kpiWrap.append(kpi('Total interactions', fmt(total), 0)); view.append(kpiWrap); const mapCard = card('Global interactions by country','col-6'); const mapCv = canvas(); mapCard.append(mapCv); view.append(mapCard); const chCard = card('Channel mix','col-6'); const chCv = canvas(); chCard.append(chCv); view.append(chCard); const agg = {}; subset.forEach(r=> agg[r.channel]=(agg[r.channel]||0)+r.interactions); makeChart(chCv.getContext('2d'),{type:'doughnut', data:{labels:Object.keys(agg), datasets:[{data:Object.values(agg)}]}}); fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json').then(r=>r.json()).then(top=>{ const countries = ChartGeo.topojson.feature(top, top.objects.countries).features; const byC={}; subset.forEach(r=> byC[r.country]=(byC[r.country]||0)+r.interactions); const values = countries.map(f=>({feature:f, value: byC[f.properties.iso_a2]||0})); makeChart(mapCv.getContext('2d'), { type:'choropleth', data:{ labels:values.map(v=>v.feature.properties.name), datasets:[{ label:'Interactions', outline: ChartGeo.topojson.mesh(top, top.objects.countries, (a,b)=>a!==b), data: values }] }, options:{ showOutline:true, showGraticule:true, scales:{ projection:{ axis:'x', projection:'equalEarth' }, color:{ axis:'x', quantize:5 } } } }); }).catch(()=> mapCard.append(el('div','small','(Map unavailable)')));
+      }
+
+      function renderPerception(){ const view = clearView(); $("#pageTitle").textContent = ROUTES[1].title; $("#pageSubtitle").textContent = ROUTES[1].subtitle; view.append(el('div','card col-12','<h3>Perception / NPS</h3><div class="small">Demo content</div>')); }
+      function renderEvents(){ const view = clearView(); $("#pageTitle").textContent = ROUTES[2].title; $("#pageSubtitle").textContent = ROUTES[2].subtitle; const rows = DATA.events; const kpiWrap = el('div','kpis col-12'); kpiWrap.append(kpi('# Attendees (sum)', fmt(rows.reduce((a,b)=>a+b.attendees,0)))); view.append(kpiWrap); const tbl = card('Event scorecard','col-12'); const t = el('table','table'); t.innerHTML = `<thead><tr><th>Event</th><th>Attendees</th><th>Insights</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${r.name}</td><td>${fmt(r.attendees)}</td><td>${r.insights}</td></tr>`).join('')}</tbody>`; tbl.append(t); view.append(tbl); }
+      function renderLearning(){ const view = clearView(); $("#pageTitle").textContent = ROUTES[3].title; $("#pageSubtitle").textContent = ROUTES[3].subtitle; view.append(el('div','card col-12','<h3>Learning</h3><div class="small">Demo content</div>')); }
+      function renderDigital(){ const view = clearView(); $("#pageTitle").textContent = ROUTES[4].title; $("#pageSubtitle").textContent = ROUTES[4].subtitle; view.append(el('div','card col-12','<h3>Digital</h3><div class="small">Demo content</div>')); }
+      function renderFoundational(){ const view = clearView(); $("#pageTitle").textContent = ROUTES[5].title; $("#pageSubtitle").textContent = ROUTES[5].subtitle; view.append(el('div','card col-12','<h3>Foundational</h3><div class="small">Demo content</div>')); }
+
+      /* UI primitives */
+      function kpi(title, value, delta=0){ const d = el('div','kpi'); d.innerHTML = `<div class="small">${title}</div><div class="val">${value}</div><div class="delta ${delta>0?'up':(delta<0?'down':'flat')}">${delta>0?'▲':(delta<0?'▼':'•')} ${Math.abs(delta)}%</div>`; return d; }
+      function card(title, cls){ const c = el('div',`card ${cls||''}`); c.append(el('h3','',title)); return c; }
+      function canvas(h=220){ const c = document.createElement('canvas'); c.height = h; return c; }
+
+      /* Router */
+      function route(){ const routeId = location.hash.replace('#/','') || ROUTES[0].id; const r = ROUTES.find(x=>x.id===routeId)||ROUTES[0]; try{ const res = r.render(); if(res && typeof res.then==='function'){ res.catch(()=>{}) } }catch(e){} updateActiveNav(); }
+      window.addEventListener('hashchange', route);
+      setupNav(); route();
+      </script>
+      </body>
+      </html>
