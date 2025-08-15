@@ -178,7 +178,8 @@ main{padding:20px}
   /* Anchor near the top (just below sticky header) with extra offset so the full circle is visible */
   top: calc(env(safe-area-inset-top, 0px) + 96px);
   transform: none;
-  z-index: 1000;
+  /* Ensure above maps/canvases and overlays */
+  z-index: 2147483647; /* max practical */
   width: 44px;
   height: 44px;
   padding: 0;

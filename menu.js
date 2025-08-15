@@ -18,7 +18,8 @@
     const app = $(".app");
     if (!app) return;
     app.classList.toggle("sidebar-collapsed", !!collapsed);
-    updateToggleLabel();
+  updateToggleLabel();
+  positionToggleForState(!!collapsed);
   }
 
   // build / update nav
@@ -194,6 +195,31 @@
     }
   }
 
+  // Ensure the toggle floats above all visuals when collapsed
+  function positionToggleForState(collapsed){
+    const btn = $("#sideToggleBtn");
+    if (!btn) return;
+    if (collapsed){
+      btn.style.position = 'fixed';
+      btn.style.left = '12px';
+      // place just under the sticky header; adjust if header height changes
+      btn.style.top = '96px';
+      btn.style.zIndex = '2147483647';
+      btn.style.width = '44px';
+      btn.style.height = '44px';
+      btn.style.padding = '0';
+      btn.style.borderRadius = '999px';
+      btn.style.display = 'inline-flex';
+      btn.style.alignItems = 'center';
+      btn.style.justifyContent = 'center';
+    } else {
+      // remove inline overrides to fallback to normal sidebar styles
+      btn.removeAttribute('style');
+      // keep the label visibility in sync after reset
+      updateToggleLabel();
+    }
+  }
+
   function toggle(force) {
     const cur = getCollapsed();
     const next = (typeof force === "boolean") ? force : !cur;
@@ -228,6 +254,8 @@
     renderNav(window.ROUTES || []);
     applyCollapsedClass(getCollapsed());
     updateToggleAria();
+  // Also enforce toggle position on load
+  positionToggleForState(getCollapsed());
     attachHandlers();
   };
 
