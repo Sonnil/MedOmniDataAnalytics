@@ -913,14 +913,6 @@ function renderLibrary2(){
   // Map view of Active Users by country (filtered)
   const mapCard = card('Map view of Active Users by country (filtered)','col-12');
   mapCard.id = 'map-visual';
-    // Add a simple toggle to show/hide Congress bubbles overlay
-    const bubblesToggle = document.createElement('button');
-    bubblesToggle.className = 'btn secondary';
-    bubblesToggle.type = 'button';
-    bubblesToggle.style.float = 'right';
-    state.__bubblesOn = (state.__bubblesOn === undefined) ? true : !!state.__bubblesOn;
-    const setBubTxt = ()=> bubblesToggle.textContent = state.__bubblesOn ? 'Hide Congress bubbles' : 'Show Congress bubbles';
-    setBubTxt();
     const resetSel = document.createElement('button');
     resetSel.className = 'btn secondary';
     resetSel.type = 'button';
@@ -928,17 +920,22 @@ function renderLibrary2(){
     resetSel.style.marginRight = '8px';
     resetSel.textContent = 'Reset map selection';
     resetSel.addEventListener('click', ()=>{
-      state.selectedCountries.clear();
-      renderLib2Chips(state, state.chipsHost, state.filtersCard);
-      updateLib2Content();
-      try{ setLib2FiltersCount(); }catch{}
+      const doWork = ()=>{
+        state.selectedCountries.clear();
+        renderLib2Chips(state, state.chipsHost, state.filtersCard);
+        updateLib2Content();
+        try{ setLib2FiltersCount(); }catch{}
+      };
+      try{
+        // Prefer stabilizing around the map (keeps map card anchored);
+        // fall back to generic page scroll preservation.
+        if (typeof stabilizeAroundMap === 'function') stabilizeAroundMap(doWork);
+        else if (typeof preservePageScroll === 'function') preservePageScroll(doWork);
+        else doWork();
+      }catch{ doWork(); }
     });
-    bubblesToggle.addEventListener('click', ()=>{
-      state.__bubblesOn = !state.__bubblesOn; setBubTxt();
-      if (bubbleCanvas) bubbleCanvas.style.display = state.__bubblesOn ? '' : 'none';
-    });
-  // Insert buttons next to the title (bubbles toggle and reset)
-  const h3 = mapCard.querySelector('h3'); if (h3) { h3.appendChild(bubblesToggle); h3.appendChild(resetSel); h3.style.position='relative'; }
+  // Insert button next to the title (reset selection)
+  const h3 = mapCard.querySelector('h3'); if (h3) { h3.appendChild(resetSel); h3.style.position='relative'; }
     // Wrap canvases so we can overlay bubble layer
     const mapWrap = document.createElement('div');
     mapWrap.style.position = 'relative';
@@ -1073,8 +1070,8 @@ function renderLibrary2(){
           scales:{ projection:{ projection:'equalEarth' }, size:{ type:'linear', range:[6,28] } }
         }
       });
-      // Respect toggle state
-      bubbleCanvas.style.display = state.__bubblesOn ? '' : 'none';
+  // Bubble overlay always visible
+  bubbleCanvas.style.display = '';
       // Helpers to stabilize scroll around map re-render and handle selection
       const stabilizeAroundMap = (fn)=>{
         try{
@@ -1146,9 +1143,9 @@ function renderLibrary2(){
         ro.observe(mapWrap);
       }catch{}
       // Route pointer events to overlay only when a bubble is under the cursor
-      function routePointer(e){
+    function routePointer(e){
         try{
-          if (!state.__bubblesOn || !bubbleChart){ bubbleCanvas.style.pointerEvents = 'none'; return; }
+      if (!bubbleChart){ bubbleCanvas.style.pointerEvents = 'none'; return; }
           const els = bubbleChart.getElementsAtEventForMode(e, 'nearest', { intersect:true }, true);
           bubbleCanvas.style.pointerEvents = (els && els.length) ? 'auto' : 'none';
         }catch{ bubbleCanvas.style.pointerEvents = 'none'; }
