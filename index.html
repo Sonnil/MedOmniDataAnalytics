@@ -32,6 +32,7 @@ body{
 /* Layout uses aside width variable for smooth transitions */
 .header{ width:100%; box-sizing:border-box; padding:12px 20px; border-bottom:1px solid #1f2945; background:#0a0f1c; position:sticky; top:0; z-index:5 }
 .app{ display:grid; grid-template-columns: auto 1fr; min-height:calc(100vh - 64px); }
+.app.sidebar-collapsed{ grid-template-columns: 0 1fr; }
 aside{
   width: var(--aside);
   background:#0a0f1c; border-right:1px solid #1f2945; padding:16px;
@@ -41,14 +42,15 @@ aside{
   box-shadow: 0 0 0 rgba(0,0,0,0);
 }
 .app.sidebar-collapsed aside{
-  width: var(--aside-collapsed);
-  padding:8px;
-  box-shadow: 6px 0 18px rgba(0,0,0,.25);
+  /* Collapse the sidebar to zero width so content gets full space */
+  width: 0;
+  padding: 0;
+  border-right: 0;
+  box-shadow: none;
+  overflow: visible; /* allow the fixed toggle to be clickable */
 }
 /* Hover “peek” when collapsed */
-.app.sidebar-collapsed aside:hover{
-  width: calc(var(--aside-collapsed) + 28px);
-}
+.app.sidebar-collapsed aside:hover{ width: 0; }
 
 .logo{display:flex; gap:10px; align-items:center; margin-bottom:16px}
 .logo-circle{display:none}
@@ -169,17 +171,53 @@ main{padding:20px}
 .sidebar-top{ display:flex; align-items:center; justify-content:center; margin-bottom:10px }
 .app.sidebar-collapsed aside .sidebar-top{ margin:0 auto; }
 
+/* Floating hamburger when collapsed */
+.app.sidebar-collapsed #sideToggleBtn{
+  position: fixed;
+  left: max(12px, env(safe-area-inset-left, 0px) + 8px);
+  /* Anchor near the top (just below sticky header) with extra offset so the full circle is visible */
+  top: calc(env(safe-area-inset-top, 0px) + 96px);
+  transform: none;
+  z-index: 1000;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #7c3aed; /* purple tone to match theme */
+  border: 1px solid #4c1d95;
+  box-shadow: 0 6px 20px rgba(0,0,0,.35);
+}
+.app.sidebar-collapsed #sideToggleBtn .hamburger{ font-size: 20px; line-height: 1; }
+.app.sidebar-collapsed #sideToggleBtn .btn-label{ display:none !important; }
+
 /* Responsive */
 @media (max-width:1100px){
   /* Auto compact layout even without manual toggle */
   aside{padding:8px}
   nav a span.label{display:none}
-  .kpis{grid-template-columns:repeat(2,1fr)}
+  /* Header stacks into single column on tablet widths */
+  .header{ grid-template-columns: 1fr; }
+  .header-right{ align-items:stretch; }
+  .header-right .filters{ justify-content:flex-start; }
+  /* KPIs wrap into two per row on tablets */
+  .kpis{ flex-wrap: wrap; }
+  .kpi{ flex: 1 1 calc(50% - 12px); }
+  .kpis{ --kpi-scale: .9; }
   .col-6,.col-7,.col-8{grid-column:span 12}
 }
 @media (max-width:720px){
   .grid{grid-template-columns:repeat(6,1fr)}
-  .kpis{grid-template-columns:1fr}
+  /* KPIs one per row on phones */
+  .kpis{ flex-wrap: wrap; }
+  .kpi{ flex: 1 1 100%; }
+  .kpis{ --kpi-scale: .85; }
+  /* Make dropdown popups fit viewport width on phones */
+  .filter .pop{ max-width: 92vw; }
+  /* Table horizontal scroll safety */
+  .table{ display:block; overflow-x:auto; white-space:nowrap; }
 }
 .col-3{grid-column:span 3} .col-4{grid-column:span 4} .col-5{grid-column:span 5}
 .col-6{grid-column:span 6} .col-7{grid-column:span 7} .col-8{grid-column:span 8} .col-12{grid-column:span 12}
@@ -932,7 +970,15 @@ function renderLibrary2(){
         byCong[r.congress] = (byCong[r.congress]||0) + r.uniqueUsers;
       });
   const nameMap = CountryNameMap;
-  const values = countries.map(f=>{ const nm=f.properties.name; const k=Object.keys(nameMap).find(k=>nameMap[k]===nm); return {feature:f, value: byC[k]||0, code:k}; });
+  // Build and cache a reverse map (Name -> Code) to avoid O(n^2) lookups per country
+  const revMap = window.__CountryNameToCode || (window.__CountryNameToCode = (function(){
+    try{ return Object.fromEntries(Object.entries(nameMap).map(([code, name])=>[name, code])); }catch{ return {}; }
+  })());
+  const values = countries.map(f=>{
+    const nm = f.properties.name;
+    const k = revMap[nm];
+    return {feature:f, value: byC[k]||0, code:k};
+  });
       // Simple choropleth (stable baseline)
       const baseCtx = mapCv.getContext('2d');
       const baseChart = makeChart(baseCtx, {
@@ -1028,24 +1074,11 @@ function renderLibrary2(){
       });
       // Respect toggle state
       bubbleCanvas.style.display = state.__bubblesOn ? '' : 'none';
-      // Click base map to select country (nearest feature)
-      mapCv.addEventListener('click', (evt)=>{
+      // Helpers to stabilize scroll around map re-render and handle selection
+      const stabilizeAroundMap = (fn)=>{
         try{
-          if (!baseCtx || !baseCtx._chart) return;
-          const baseChart = baseCtx._chart;
-          const els = baseChart.getElementsAtEventForMode(evt, 'nearest', { intersect:true }, true);
-          if (!els || !els.length) return;
-          const idx = els[0].index ?? els[0].dataIndex;
-          const code = values[idx] && values[idx].code;
-          if (!code) return;
-          const multi = evt.metaKey || evt.ctrlKey || evt.shiftKey;
           const oldTop = mapCard.getBoundingClientRect().top;
-          if (!multi) state.selectedCountries.clear();
-          if (state.selectedCountries.has(code)) state.selectedCountries.delete(code); else state.selectedCountries.add(code);
-          state.lastSelectedCountry = code;
-          state.__openDrillForCountry = code;
-          renderLib2Chips(state, state.chipsHost, state.filtersCard);
-          updateLib2Content();
+          fn();
           requestAnimationFrame(()=>{
             const newEl = document.getElementById('map-visual');
             if (newEl){
@@ -1057,7 +1090,32 @@ function renderLibrary2(){
               });
             }
           });
-          try{ setLib2FiltersCount(); }catch{}
+        }catch{ fn(); }
+      };
+      const selectCountry = (code, cg, multi)=>{
+        if (!code) return;
+        if (!multi) state.selectedCountries.clear();
+        if (state.selectedCountries.has(code)) state.selectedCountries.delete(code); else state.selectedCountries.add(code);
+        if (cg){
+          if (!multi) state.filters.congress.clear();
+          if (state.filters.congress.has(cg)) state.filters.congress.delete(cg); else state.filters.congress.add(cg);
+        }
+        state.lastSelectedCountry = code;
+        state.__openDrillForCountry = code;
+        stabilizeAroundMap(()=>{ renderLib2Chips(state, state.chipsHost, state.filtersCard); updateLib2Content(); });
+        try{ setLib2FiltersCount(); }catch{}
+      };
+      // Click base map to select country (nearest feature)
+      mapCv.addEventListener('click', (evt)=>{
+        try{
+          if (!baseCtx || !baseCtx._chart) return;
+          const baseChart = baseCtx._chart;
+          const els = baseChart.getElementsAtEventForMode(evt, 'nearest', { intersect:true }, true);
+          if (!els || !els.length) return;
+          const idx = els[0].index ?? els[0].dataIndex;
+          const code = values[idx] && values[idx].code;
+          const multi = evt.metaKey || evt.ctrlKey || evt.shiftKey;
+          selectCountry(code, null, multi);
         }catch{}
       });
       // Click bubble to select country and (optionally) congress
@@ -1068,31 +1126,8 @@ function renderLibrary2(){
           if (!els || !els.length) return;
           const raw = els[0].element && els[0].element.$context && els[0].element.$context.raw ? els[0].element.$context.raw : els[0].raw;
           const code = raw && raw.code; const cg = raw && raw.congress;
-          if (!code) return;
           const multi = evt.metaKey || evt.ctrlKey || evt.shiftKey;
-          const oldTop = mapCard.getBoundingClientRect().top;
-          if (!multi) state.selectedCountries.clear();
-          if (state.selectedCountries.has(code)) state.selectedCountries.delete(code); else state.selectedCountries.add(code);
-          if (cg){
-            if (!multi) state.filters.congress.clear();
-            if (state.filters.congress.has(cg)) state.filters.congress.delete(cg); else state.filters.congress.add(cg);
-          }
-          state.lastSelectedCountry = code;
-          state.__openDrillForCountry = code;
-          renderLib2Chips(state, state.chipsHost, state.filtersCard);
-          updateLib2Content();
-          requestAnimationFrame(()=>{
-            const newEl = document.getElementById('map-visual');
-            if (newEl){
-              const newTop = newEl.getBoundingClientRect().top;
-              window.scrollBy(0, newTop - oldTop);
-              requestAnimationFrame(()=>{
-                const newTop2 = newEl.getBoundingClientRect().top;
-                window.scrollBy(0, newTop2 - oldTop);
-              });
-            }
-          });
-          try{ setLib2FiltersCount(); }catch{}
+          selectCountry(code, cg, multi);
         }catch{}
       });
       // Keep overlay intrinsic size in sync with base for accurate hit-testing
@@ -1117,8 +1152,8 @@ function renderLibrary2(){
           bubbleCanvas.style.pointerEvents = (els && els.length) ? 'auto' : 'none';
         }catch{ bubbleCanvas.style.pointerEvents = 'none'; }
       }
-      mapWrap.addEventListener('mousemove', routePointer);
-      mapWrap.addEventListener('mouseleave', ()=>{ bubbleCanvas.style.pointerEvents = 'none'; });
+  mapWrap.addEventListener('mousemove', routePointer, { passive: true });
+  mapWrap.addEventListener('mouseleave', ()=>{ bubbleCanvas.style.pointerEvents = 'none'; }, { passive: true });
     }).catch(()=>{ mapCard.append(el('div','small','(Map unavailable offline)')); });
 
     // Additional view: Active Users by Country × Congress (toggleable)
@@ -1526,6 +1561,30 @@ function renderLibrary2(){
         const activeStyle = (btn, on)=>{ btn.style.background = on ? '#4b5563' : '#374151'; };
     activeStyle(btnTable, modalMode==='table'); activeStyle(btnLine, modalMode==='line'); activeStyle(btnMixed, modalMode==='mixed');
       };
+      // Aggregate by congress (sum users/sessions/downloads; weighted avg time by sessions)
+      function aggregateByCongress(){
+        const byCg = {};
+        getDRows().forEach(r=>{
+          const g = byCg[r.congress] || (byCg[r.congress] = { users:0, sessions:0, downloads:0, sumTimeSec:0 });
+          g.users += r.uniqueUsers || 0;
+          g.sessions += r.engagedSessions || 0;
+          g.downloads += r.fileDownloads || 0;
+          const s = r.engagedSessions || 0;
+          const t = r.avgEngTimeSec || 0;
+          g.sumTimeSec += (t * Math.max(1, s));
+        });
+        const labels = Object.entries(byCg).sort((a,b)=> (b[1].users||0) - (a[1].users||0)).map(([cg])=> cg);
+        const users = labels.map(l=> byCg[l]?.users || 0);
+        const sessions = labels.map(l=> byCg[l]?.sessions || 0);
+        const downloads = labels.map(l=> byCg[l]?.downloads || 0);
+        const avgTimeMin = labels.map(l=>{
+          const g = byCg[l];
+          const denom = Math.max(1, g.sessions||0);
+          const sec = (g.sumTimeSec||0) / denom;
+          return +(sec/60).toFixed(2);
+        });
+        return { labels, users, sessions, downloads, avgTimeMin };
+      }
       function renderTable(){
         viewHost.innerHTML = '';
         const cur = getDRows();
@@ -1538,28 +1597,7 @@ function renderLibrary2(){
       function renderLine(){
         viewHost.innerHTML = '';
         try{ if (modalChart && modalChart.destroy) { modalChart.destroy(); modalChart = null; } }catch{}
-        // Group by Congress with sums and weighted average for engagement time
-        const byCg = {};
-        getDRows().forEach(r=>{
-          const g = byCg[r.congress] || (byCg[r.congress] = { users:0, sessions:0, downloads:0, sumTimeSec:0 });
-          g.users += r.uniqueUsers || 0;
-          g.sessions += r.engagedSessions || 0;
-          g.downloads += r.fileDownloads || 0;
-          const s = r.engagedSessions || 0;
-          const t = r.avgEngTimeSec || 0;
-          // Weighted by sessions for a better average
-          g.sumTimeSec += (t * Math.max(1, s));
-        });
-        const labels = Object.entries(byCg).sort((a,b)=> (b[1].users||0) - (a[1].users||0)).map(([cg])=> cg);
-        const users = labels.map(l=> byCg[l]?.users || 0);
-        const sessions = labels.map(l=> byCg[l]?.sessions || 0);
-        const downloads = labels.map(l=> byCg[l]?.downloads || 0);
-        const avgTimeMin = labels.map(l=>{
-          const g = byCg[l];
-          const denom = Math.max(1, g.sessions||0);
-          const sec = (g.sumTimeSec||0) / denom;
-          return +(sec/60).toFixed(2); // minutes on a separate axis
-        });
+  const { labels, users, sessions, downloads, avgTimeMin } = aggregateByCongress();
         const cv = document.createElement('canvas'); cv.height = 200; viewHost.appendChild(cv);
         const ctx = cv.getContext('2d');
         const colors = { users:'#60a5fa', sessions:'#34d399', downloads:'#fbbf24', time:'#a78bfa' };
@@ -1603,21 +1641,7 @@ function renderLibrary2(){
       function renderMixed(){
         viewHost.innerHTML = '';
         try{ if (modalChart && modalChart.destroy) { modalChart.destroy(); modalChart = null; } }catch{}
-        // Group by Congress with sums and weighted average for engagement time
-        const byCg = {};
-        getDRows().forEach(r=>{
-          const g = byCg[r.congress] || (byCg[r.congress] = { users:0, sessions:0, downloads:0, sumTimeSec:0 });
-          g.users += r.uniqueUsers || 0;
-          g.sessions += r.engagedSessions || 0;
-          g.downloads += r.fileDownloads || 0;
-          const s = r.engagedSessions || 0; const t = r.avgEngTimeSec || 0;
-          g.sumTimeSec += (t * Math.max(1, s));
-        });
-        const labels = Object.entries(byCg).sort((a,b)=> (b[1].users||0) - (a[1].users||0)).map(([cg])=> cg);
-        const users = labels.map(l=> byCg[l]?.users || 0);
-        const sessions = labels.map(l=> byCg[l]?.sessions || 0);
-        const downloads = labels.map(l=> byCg[l]?.downloads || 0);
-        const avgTimeMin = labels.map(l=>{ const g = byCg[l]; const denom = Math.max(1, g.sessions||0); const sec = (g.sumTimeSec||0) / denom; return +(sec/60).toFixed(2); });
+  const { labels, users, sessions, downloads, avgTimeMin } = aggregateByCongress();
         const cv = document.createElement('canvas'); cv.height = 220; viewHost.appendChild(cv);
         const ctx = cv.getContext('2d');
         const colors = { users:'#60a5fa', sessions:'#34d399', downloads:'#fbbf24', time:'#a78bfa' };
