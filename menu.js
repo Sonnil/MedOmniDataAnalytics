@@ -19,98 +19,108 @@
     if (!app) return;
     app.classList.toggle("sidebar-collapsed", !!collapsed);
     updateToggleLabel();
-    // Update nav and dots visibility based on collapsed state
-    const nav = $("#nav");
-    if (nav) {
-      // Let CSS handle visibility/opacity via the .sidebar-collapsed class.
-      nav.classList.toggle('sidebar-collapsed', !!collapsed);
-      nav.querySelectorAll('.dot').forEach(dot => {
-        dot.classList.toggle('hidden-during-collapse', !!collapsed);
-      });
-    }
   }
 
-  // build / update nav (supports icons and parent/submenu via route.parent)
+  // build / update nav
   function renderNav(routes) {
     const nav = $("#nav");
     if (!nav || !routes?.length) return;
     nav.innerHTML = "";
 
-    // Build parent -> children map for routes that declare a parent
-    const childrenMap = {};
-    routes.forEach(r => { if (r.parent) { (childrenMap[r.parent] = childrenMap[r.parent] || []).push(r); } });
+    routes.forEach(r => {
+      // container for item + optional subnav
+      const item = document.createElement('div');
+      item.className = 'nav-item';
 
-    // Keep expanded state per parent id
-    if (!window.__menuExpandedMap) window.__menuExpandedMap = {};
-
-    // Helper to render a single top-level route (may have children)
-    function renderTopRoute(r) {
-      const a = document.createElement('a');
+      // main link
+      const a = document.createElement("a");
       a.href = `#/${r.id}`;
-      a.setAttribute('data-route-id', r.id);
-      a.classList.add('menu-item');
+      a.setAttribute("data-route-id", r.id);
+      a.className = 'nav-link';
 
-      const cleanTitle = (r.title || '').replace(/^\d+\)?\s*/, '');
-
-      const iconHtml = r.icon ? `<span class="menu-icon" aria-hidden="true">${r.icon}</span>` : `<span class="dot" style="width:8px;height:8px;border-radius:50%;background:var(--accent)"></span>`;
-
-      const kids = childrenMap[r.id] || [];
-      if (kids.length) {
-        const expanded = !!window.__menuExpandedMap[r.id] || kids.some(k => location.hash.replace('#/','') === k.id);
-        const expand = `<span class="expand-icon" style="margin-right:8px;user-select:none;cursor:pointer;display:inline-block;width:16px;text-align:center;">${expanded ? '\u2212' : '+'}</span>`;
-        a.innerHTML = `${expand}${iconHtml}<span class="label">${cleanTitle}</span>`;
-
-        // expand/collapse control
-        a.querySelector('.expand-icon').addEventListener('click', (e) => {
-          e.preventDefault(); e.stopPropagation();
-          window.__menuExpandedMap[r.id] = !expanded;
-          renderNav(routes);
-        });
-
-        // if anchor clicked (not expand), collapse others
-        a.addEventListener('click', (e) => {
-          if (!e.target.classList.contains('expand-icon')) {
-            window.__menuExpandedMap[r.id] = false;
-            renderNav(routes);
-          }
-        });
-
-        nav.appendChild(a);
-
-        if (expanded) {
-          kids.forEach(k => {
-            const subA = document.createElement('a');
-            subA.href = `#/${k.id}`;
-            subA.setAttribute('data-route-id', k.id);
-            subA.className = 'submenu menu-item';
-            subA.style.paddingLeft = '32px';
-            subA.style.opacity = '0';
-            subA.style.transform = 'translateX(-10px)';
-            subA.style.transition = 'opacity 0.2s ease, transform 0.2s ease';
-            requestAnimationFrame(() => { subA.style.opacity = '1'; subA.style.transform = 'translateX(0)'; });
-            const subTitle = (k.title||'').replace(/^[0-9]+[a-zA-Z]?\)?\s*/, '');
-            const subIconHtml = k.icon ? `<span class="menu-icon" aria-hidden="true">${k.icon}</span>` : `<span class="dot" style="width:8px;height:8px;border-radius:50%;background:var(--accent)"></span>`;
-            subA.innerHTML = `${subIconHtml}<span class="label">${subTitle}</span>`;
-            nav.appendChild(subA);
-          });
-        }
-        return;
+      // dot or expander
+      const dot = document.createElement('span');
+      dot.className = 'dot';
+      if (r.children && r.children.length) {
+        dot.textContent = '+'; // show plus for expandable items
+        dot.classList.add('expander');
+        dot.setAttribute('role','button');
+        dot.tabIndex = 0;
+      } else {
+        dot.style.width = '8px'; dot.style.height = '8px'; dot.style.borderRadius = '50%'; dot.style.background = 'var(--accent)';
       }
 
-      // no children
-      a.innerHTML = `${iconHtml}<span class="label">${cleanTitle}</span>`;
-      a.addEventListener('click', () => { /* collapse any open parents when navigating to unrelated top-level */ });
-      nav.appendChild(a);
-    }
+      const label = document.createElement('span');
+      label.className = 'label';
+      label.textContent = r.title;
 
-    // Render top-level routes (those without parent)
-    routes.filter(r => !r.parent).forEach(r => renderTopRoute(r));
+      a.appendChild(dot);
+      a.appendChild(label);
+      item.appendChild(a);
 
-    // update nav visibility based on collapsed state
-    const app = document.querySelector('.app');
-    const collapsed = app && app.classList.contains('sidebar-collapsed');
-    nav.classList.toggle('sidebar-collapsed', !!collapsed);
-    nav.querySelectorAll('.dot').forEach(dot => dot.classList.toggle('hidden-during-collapse', !!collapsed));
+      // subnav (if any)
+      if (r.children && r.children.length) {
+        const sub = document.createElement('div');
+        sub.className = 'subnav';
+        sub.style.display = 'none';
+        r.children.forEach(c => {
+          const ca = document.createElement('a');
+          ca.href = `#/${c.id}`;
+          ca.setAttribute('data-route-id', c.id);
+          ca.className = 'sub-link';
+          ca.innerHTML = `<span class="dot" style="width:6px;height:6px;border-radius:50%;background:var(--muted)"></span><span class="label">${c.title}</span>`;
+          sub.appendChild(ca);
+        });
+        item.appendChild(sub);
+
+        // expander behavior: toggle this subnav and collapse others
+        const toggle = (open) => {
+          // close other subnavs and reset their expander icons
+          [...nav.querySelectorAll('.nav-item')].forEach(it => {
+            const s = it.querySelector('.subnav');
+            const ex = it.querySelector('.expander');
+            if (s && s !== sub) { s.style.display = 'none'; if (ex) ex.textContent = '+'; }
+          });
+          // toggle this one
+          sub.style.display = (typeof open === 'boolean') ? (open ? 'block' : 'none') : (sub.style.display === 'none' ? 'block' : 'none');
+          dot.textContent = sub.style.display === 'none' ? '+' : '−';
+        };
+
+        if (!dot._wired) {
+          dot._wired = true;
+          dot.addEventListener('click', (e) => { e.preventDefault(); toggle(); });
+          dot.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } });
+        }
+
+        // collapse subnavs when main link is clicked (improve UX)
+        if (!a._wired) {
+          a._wired = true;
+          a.addEventListener('click', () => {
+            [...nav.querySelectorAll('.nav-item')].forEach(it => {
+              const s = it.querySelector('.subnav');
+              const ex = it.querySelector('.expander');
+              if (s && s !== sub) { s.style.display = 'none'; if (ex) ex.textContent = '+'; }
+            });
+          });
+        }
+      } else {
+        // when clicking a leaf, collapse all subnavs
+        if (!a._wired) {
+          a._wired = true;
+          a.addEventListener('click', () => {
+            [...nav.querySelectorAll('.nav-item')].forEach(it => {
+              const s = it.querySelector('.subnav');
+              const ex = it.querySelector('.expander');
+              if (s) { s.style.display = 'none'; if (ex) ex.textContent = '+'; }
+            });
+          });
+        }
+      }
+
+      nav.appendChild(item);
+    });
+
+    // ensure active link updated
     setActive(getCurrentRouteId());
   }
 
@@ -121,8 +131,31 @@
   function setActive(routeId) {
     const nav = $("#nav");
     if (!nav) return;
-    [...nav.children].forEach(a => {
-      a.classList.toggle("active", a.getAttribute("href") === "#/" + routeId);
+    // collapse all and then open parent if needed
+    [...nav.querySelectorAll('.subnav')].forEach(s => s.style.display = 'none');
+    [...nav.children].forEach(item => {
+      const link = item.querySelector('a[data-route-id]');
+      const sub = item.querySelector('.subnav');
+      // default inactive
+      item.classList.remove('active');
+      if (link && link.getAttribute('data-route-id') === routeId) {
+        item.classList.add('active');
+      }
+      // check sub-links
+      if (sub) {
+        const subLinks = [...sub.querySelectorAll('a[data-route-id]')];
+        const found = subLinks.find(sl => sl.getAttribute('data-route-id') === routeId);
+        if (found) {
+          // open this subnav and mark the child active
+          sub.style.display = 'block';
+          // set expander text to '−'
+          const exp = item.querySelector('.expander'); if (exp) exp.textContent = '−';
+          subLinks.forEach(sl => sl.classList.toggle('active', sl.getAttribute('data-route-id') === routeId));
+        } else {
+          // ensure sub-links inactive
+          subLinks.forEach(sl => sl.classList.remove('active'));
+        }
+      }
     });
   }
 
@@ -136,21 +169,12 @@
     const bar = document.createElement("div");
     bar.className = "sidebar-top";
     bar.innerHTML = `
-      <button id="sideToggleBtn" class="btn side-toggle" type="button" aria-label="Toggle menu" aria-pressed="false" aria-expanded="false" aria-controls="nav">
+      <button id="sideToggleBtn" class="btn side-toggle" type="button" aria-label="Toggle menu" aria-pressed="false">
         <span class="hamburger" aria-hidden="true">☰</span>
         <span class="btn-label">Menu</span>
       </button>
     `;
     aside.insertBefore(bar, aside.firstChild);
-
-    const handleToggle = (collapsed) => {
-      setCollapsed(collapsed);
-      applyCollapsedClass(collapsed);
-      updateToggleAria();
-      updateToggleExpandedAttr();
-    };
-
-  // Hover behavior removed: menu toggles only via click on the hamburger
   }
 
   function updateToggleAria() {
@@ -158,17 +182,16 @@
     if (btn) btn.setAttribute("aria-pressed", getCollapsed() ? "true" : "false");
   }
 
-  function updateToggleExpandedAttr(){
-    const btn = $("#sideToggleBtn");
-    if (!btn) return;
-    // aria-expanded = true when menu is expanded (not collapsed)
-    btn.setAttribute('aria-expanded', getCollapsed() ? 'false' : 'true');
-  }
-
   // Show "Menu" when expanded; only icon when collapsed
   function updateToggleLabel() {
-    // Intentionally empty: CSS handles showing/hiding the .btn-label based on .sidebar-collapsed.
-    // Kept for API compatibility if future JS-driven toggling is required.
+    const app = $(".app");
+    const btn = $("#sideToggleBtn");
+    if (!btn || !app) return;
+    const label = btn.querySelector(".btn-label");
+    const collapsed = app.classList.contains("sidebar-collapsed");
+    if (label) {
+      label.style.display = collapsed ? "none" : "inline";
+    }
   }
 
   function toggle(force) {
@@ -176,8 +199,7 @@
     const next = (typeof force === "boolean") ? force : !cur;
     setCollapsed(next);
     applyCollapsedClass(next);
-  updateToggleAria();
-  updateToggleExpandedAttr();
+    updateToggleAria();
   }
 
   // wire events
@@ -205,8 +227,7 @@
     ensureSidebarToggle();
     renderNav(window.ROUTES || []);
     applyCollapsedClass(getCollapsed());
-  updateToggleAria();
-  updateToggleExpandedAttr();
+    updateToggleAria();
     attachHandlers();
   };
 

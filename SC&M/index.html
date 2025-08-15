@@ -1,9 +1,779 @@
 <!doctype html>
-<html>
-<head><meta charset="utf-8"><title>SC&M Module</title></head>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Medical Affairs Analytics Demo</title>
+
+<!-- Collapsible menu controller (from project root) -->
+<script defer src="../menu.js"></script>
+<!-- Shared helpers/data (from project root) -->
+<script defer src="../shared.js"></script>
+
+<style>
+:root{
+  --bg:#0b1020; --card:#121833; --muted:#94a3b8; --text:#e2e8f0; --accent:#7dd3fc; --accent-2:#a78bfa;
+  --good:#22c55e; --warn:#f59e0b; --bad:#ef4444;
+  --aside: 260px;              /* default expanded */
+  --aside-collapsed: 72px;     /* collapsed width */
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;
+  background:linear-gradient(180deg,#0b1020 0%,#0b1020 60%,#0a0f1c 100%);
+  color:var(--text); font:15px/1.4 system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,"Apple Color Emoji","Segoe UI Emoji";
+}
+
+/* Layout uses aside width variable for smooth transitions */
+.header{ width:100%; box-sizing:border-box; padding:12px 20px; border-bottom:1px solid #1f2945; background:#0a0f1c; position:sticky; top:0; z-index:5 }
+.app{ display:grid; grid-template-columns: auto 1fr; min-height:calc(100vh - 64px); }
+aside{
+  width: var(--aside);
+  background:#0a0f1c; border-right:1px solid #1f2945; padding:16px;
+  position:sticky; top:0; height:100vh; overflow:auto;
+  transition: width .22s ease, padding .22s ease, box-shadow .22s ease;
+  box-shadow: 0 0 0 rgba(0,0,0,0);
+}
+.app.sidebar-collapsed aside{
+  width: var(--aside-collapsed);
+  padding:8px;
+  box-shadow: 6px 0 18px rgba(0,0,0,.25);
+}
+/* Hover “peek” when collapsed */
+.app.sidebar-collapsed aside:hover{
+  width: calc(var(--aside-collapsed) + 28px);
+}
+
+.logo{display:flex; gap:10px; align-items:center; margin-bottom:16px}
+.logo-circle{display:none}
+.logo-img{width:34px; height:34px; border-radius:6px; display:block}
+h1{font-size:16px; margin:0}
+.small{color:var(--muted); font-size:12px}
+
+nav{display:flex; flex-direction:column; gap:6px; margin-top:12px}
+nav a{
+  text-decoration:none; color:var(--text); padding:10px 12px; border-radius:8px; display:flex; gap:10px; align-items:center;
+  border:1px solid transparent; transition: background .15s ease, border-color .15s ease, opacity .15s ease;
+}
+nav a:hover{background:#0f1730; border-color:#1f2945}
+nav a.active{background:#141d3b; border-color:#28345d}
+.app.sidebar-collapsed nav a .label{ display:none } /* hide labels when collapsed */
+
+main{padding:20px}
+.header{ display:grid; grid-template-columns: 1fr auto; gap:16px; align-items:center; margin-bottom:16px }
+.header-left{ display:flex; flex-direction:column; align-items:flex-start; gap:8px; min-width:0 }
+.header-left .logo{ margin-bottom:0 }
+.header-left .logo h1{ color:#ffffff }
+.header-right{ display:flex; flex-direction:column; align-items:flex-end; justify-content:flex-start; gap:10px; margin-left:16px }
+.header-right .filters{ margin-left:0 }
+.header-right .active-filters{ margin-top:0; justify-content:flex-end }
+.filters .filters-row{ overflow:visible; max-height:420px; opacity:1; transition:max-height .22s ease, opacity .22s ease }
+.header-right.collapsed .filters .filters-row{ max-height:0; opacity:0; pointer-events:none }
+.filters-toggle{ background:transparent; border:1px solid #27325a; color:#e2e8f0; border-radius:999px; padding:4px 10px; font-size:12px; cursor:pointer; display:inline-flex; align-items:center; gap:8px }
+.filters-toggle:hover{ background:#0f1730 }
+.filters-toggle .icon{ width:14px; height:14px; display:inline-block; }
+.filters-toggle .icon svg{ width:14px; height:14px; display:block; fill:#e2e8f0 }
+.filters-toggle .pm{ font-weight:700; font-size:14px; line-height:1 }
+/* Page title and subtitle styling */
+.title-wrap{ display:flex; flex-direction:column; line-height:1.2 }
+#pageTitle{ font-size:13px; color:var(--muted) }
+#pageSubtitle.small{ margin-top:2px }
+.filters{ display:flex; gap:6px; flex-wrap:wrap; margin-left:auto; align-items:center }
+.filters-row{ display:flex; gap:8px; flex-wrap:wrap; align-items:center }
+.filter{ position:relative }
+.filter details{ background:#0f1730; border:1px solid #27325a; border-radius:10px; }
+.filter summary{ list-style:none; padding:8px 10px; cursor:pointer; font-size:14px }
+.filter summary::-webkit-details-marker{display:none}
+.pop{ position:absolute; z-index:10; min-width:260px; background:#0f1730; border:1px solid #27325a; border-radius:10px; padding:8px; margin-top:4px; box-shadow:0 8px 24px rgba(0,0,0,.35); }
+.filter.align-right .pop{ left:auto; right:0 }
+.chklist{ max-height:220px; overflow:auto; padding:4px 6px; display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+.chklist label{ display:flex; align-items:center; gap:6px; padding:6px 8px; border:1px solid #223055; border-radius:8px; }
+.applyRow{ display:flex; gap:6px; justify-content:space-between; padding:6px 2px 2px; }
+.btn{ background:#141d3b; border:1px solid #2a3a6a; color:#e2e8f0; border-radius:8px; padding:6px 10px; cursor:pointer; font-size:13px }
+.btn.secondary{ background:transparent }
+.badge{ padding:2px 6px; border-radius:6px; font-size:12px; border:1px solid #2a3a6a; background:#0f1730; color:#e5e7eb }
+
+/* Applied filters (chips) */
+.active-filters{ display:flex; flex-wrap:wrap; gap:6px; margin-left:auto; margin-top:6px }
+.chip{ display:inline-flex; align-items:center; gap:6px; border:1px solid #27325a; background:#101736; color:#e2e8f0; border-radius:999px; padding:4px 8px; font-size:10px }
+.chip .x{ background:transparent; border:0; color:#94a3b8; cursor:pointer; line-height:1; font-size:14px; padding:0 2px }
+.chip .x:hover{ color:#e2e8f0 }
+.active-filters .clear-all{ margin-left:8px; background:transparent; border:1px solid #27325a; color:#cbd5e1; border-radius:999px; padding:4px 10px; font-size:10px; cursor:pointer }
+.active-filters .clear-all:hover{ background:#0f1730 }
+
+/* Filter summary inline clear button */
+.filter summary .clear-btn{ margin-left:8px; background:transparent; border:1px solid #27325a; color:#94a3b8; border-radius:8px; padding:0 6px; font-size:12px; line-height:20px; display:inline-flex; align-items:center }
+.filter summary .clear-btn:hover{ color:#e2e8f0; background:#0f1730 }
+
+.grid{ display:grid; grid-template-columns:repeat(12,1fr); gap:12px }
+.card{ background:var(--card); border:1px solid #1f2945; border-radius:12px; padding:14px; min-height:120px; box-shadow:0 1px 0 rgba(255,255,255,0.03) inset }
+.card h3{ margin:0 0 8px 0; font-size:14px; color:#cbd5e1 }
+.kpis{ display:grid; grid-template-columns:repeat(4,1fr); gap:12px }
+.kpi{ background:#0f1730; border:1px solid #253059; border-radius:12px; padding:12px }
+.kpi .val{ font-size:22px; font-weight:700 }
+.kpi .delta{ font-size:12px }
+.delta.up{color:var(--good)} .delta.down{color:var(--bad)} .delta.flat{color:var(--muted)}
+
+.table{width:100%; border-collapse: collapse; font-size:14px}
+.table th,.table td{padding:8px 10px; border-bottom:1px solid #223055}
+.heat-grid{ display:grid; gap:4px; grid-template-columns:repeat(8,minmax(0,1fr)) }
+.cell{ aspect-ratio:1/1; border-radius:6px; display:flex; align-items:center; justify-content:center; font-size:11px; border:1px solid #223055; background:#101a39; color:#dbeafe; position:relative; }
+footer{margin-top:14px; color:var(--muted); font-size:12px}
+
+/* Collapsible sidebar behavior — applies at all sizes */
+.app.sidebar-collapsed nav a .label { display: none; } /* hide labels, keep dots */
+
+/* Responsive */
+@media (max-width:1100px){
+  /* Auto compact layout even without manual toggle */
+  aside{padding:8px}
+  nav a span.label{display:none}
+  .kpis{grid-template-columns:repeat(2,1fr)}
+  .col-6,.col-7,.col-8{grid-column:span 12}
+}
+@media (max-width:720px){
+  .grid{grid-template-columns:repeat(6,1fr)}
+  .kpis{grid-template-columns:1fr}
+}
+.col-3{grid-column:span 3} .col-4{grid-column:span 4} .col-5{grid-column:span 5}
+.col-6{grid-column:span 6} .col-7{grid-column:span 7} .col-8{grid-column:span 8} .col-12{grid-column:span 12}
+</style>
+</head>
 <body>
-<h3>SC&M module entry</h3>
-<p>This file is part of the Supply Chain & Manufacturing module and is intended to be loaded by the main `index.html` when routing to <code>#/scm</code>.</p>
+  <div class="header">
+      <!-- The ☰ Menu button is injected by menu.js; no markup needed here -->
+      <div class="header-left">
+        <a href="../index.html" class="logo" aria-label="Home">
+          <img class="logo-img" src="https://www.sanofi.com/favicon.ico" alt="Sanofi" />
+          <div>
+            <h1>MedAffairs BI</h1>
+          </div>
+        </a>
+        <div class="title-wrap">
+          <div style="font-weight:700" id="pageTitle">Dashboard</div>
+          <div class="small" id="pageSubtitle">Interactive demo</div>
+        </div>
+      </div>
+      <!-- Right column: filters on top-right, breadcrumbs below -->
+      <div class="header-right">
+        <div class="filters" id="filters">
+          <button class="filters-toggle" type="button" aria-controls="filtersRow" aria-expanded="false" title="Show filters">
+            <span class="icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M2 5h20v2L14 14v5l-4 2v-7L2 7V5z"></path>
+              </svg>
+            </span>
+            <span>Filters</span>
+            <span class="pm" aria-hidden="true">+</span>
+          </button>
+          <div class="filters-row" id="filtersRow"></div>
+        </div>
+        <div id="activeFilters" class="active-filters"></div>
+      </div>
+  </div>
+
+<div class="app">
+  <aside>
+    <div class="logo">
+      <div class="logo-circle"></div>
+      <div>
+        <h1>MedAffairs BI</h1>
+        <div class="small">Demo analytics suite</div>
+      </div>
+    </div>
+    <nav id="nav"></nav>
+    <footer>© Demo. Sample data only.</footer>
+  </aside>
+
+  <main>
+    <div id="view" class="grid"></div>
+  </main>
+</div>
+
+<script>
+/* Data from shared.js */
+
+/* =========================
+   Helpers / UI
+========================= */
+// helpers come from shared.js (kpi, card, canvas, leaderboardTable, listBlock)
+
+/* =========================
+   Multi-select Filters (checkboxes)
+========================= */
+// filters provided by shared.js
+
+/* =========================
+   Router
+========================= */
+const ROUTES = [
+  {id:"medical",  title:"1) Medical Activity Reporting",  subtitle:"Field + omnichannel activity", render: renderMedical},
+  {id:"perception",title:"2) Perception / NPS / KAB",     subtitle:"Awareness, attitudes, behavior", render: renderPerception},
+  {id:"events",    title:"3) Congresses & Events",         subtitle:"ROI and strategic value", render: renderEvents},
+  {id:"library",   title:"3a) Library of Congresses",      subtitle:"Event web analytics (users, engagement, downloads)", render: renderLibrary},
+  {id:"learning",  title:"4) Learning & Capability",       subtitle:"Readiness & skills", render: renderLearning},
+  {id:"digital",   title:"5) Digital & Media",             subtitle:"Digital influence & content", render: renderDigital},
+  {id:"foundational",title:"6) Foundational Data & Insights", subtitle:"Data health & readiness", render: renderFoundational},
+  {id:"ceo",       title:"7) CEO View (Executive)",        subtitle:"Predictive, ROI, compliance – board-ready", render: renderCEO},
+];
+
+// Make ROUTES available to menu.js
+window.ROUTES = ROUTES;
+
+// clearView/makeChart provided by shared.js
+
+function route(){
+  const routeId = location.hash.replace("#/","") || ROUTES[0].id;
+  const r = ROUTES.find(x=>x.id===routeId) || ROUTES[0];
+  r.render();
+  if (window.updateActiveNav) updateActiveNav();
+}
+
+/* =========================
+   Pages
+========================= */
+/*** 1) MEDICAL ACTIVITY ***/
+function renderMedical(){
+  const view = clearView(); buildMultiFilters();
+  $("#pageTitle").textContent = ROUTES[0].title;
+  $("#pageSubtitle").textContent = ROUTES[0].subtitle;
+
+  const kpiWrap = el("div","kpis col-12");
+  const subset = DATA.interactions.rows.filter(passFilters);
+  const totalInteractions = subset.reduce((a,b)=>a+b.interactions,0);
+  const avgDur = (subset.reduce((a,b)=>a+b.avgCallMin,0)/Math.max(1,subset.length)).toFixed(1);
+  const avgFreq = (subset.reduce((a,b)=>a+b.freqPerHCP,0)/Math.max(1,subset.length)).toFixed(1);
+  const plan = DATA.progressByQuarter.at(-1);
+  const planDelta = Math.round((plan.actual/plan.planned-1)*100);
+
+  kpiWrap.append(
+    kpi("Total interactions", fmt(totalInteractions), planDelta),
+    kpi("Avg call duration (min)", avgDur, randBetween(-3,8)),
+    kpi("Avg call freq / HCP (qtr)", avgFreq, randBetween(-2,6)),
+    kpi("Engagement progress (vs plan)", `${fmt(plan.actual)} / ${fmt(plan.planned)}`, planDelta)
+  );
+  view.append(kpiWrap);
+
+  const mapCard = card("Global map of interaction volume by country","col-6");
+  const mapCanvas = canvas(); mapCard.append(mapCanvas); view.append(mapCard);
+
+  const channelCard = card("Channel mix (email, web, events, in-person, CLM/IVA, remote)","col-6");
+  const chCanv = canvas(); channelCard.append(chCanv); view.append(channelCard);
+
+  const tsCard = card("Engagement trends over quarters","col-8");
+  const tsCanv = canvas(); tsCard.append(tsCanv); view.append(tsCard);
+
+  const lbCard = card("Leaderboard of most active markets / MSLs","col-4");
+  lbCard.append(leaderboardTable(subset)); view.append(lbCard);
+
+  const chAgg = {}; subset.forEach(r=>{ chAgg[r.channel]=(chAgg[r.channel]||0)+r.interactions; })
+  makeChart(chCanv.getContext('2d'), { type:'bar',
+    data:{ labels:Object.keys(chAgg), datasets:[{ label:'Interactions', data:Object.values(chAgg) }]},
+    options:{ indexAxis:'y', scales:{ x:{ beginAtZero:true } }, plugins:{ legend:{display:false} } }
+  });
+
+  makeChart(tsCanv.getContext('2d'), { type:'line',
+    data:{
+      labels: DATA.progressByQuarter.map(x=>x.label),
+      datasets:[
+        {label:'Planned', data: DATA.progressByQuarter.map(x=>x.planned), borderWidth:2, tension:.25},
+        {label:'Actual', data: DATA.progressByQuarter.map(x=>x.actual), borderWidth:2, tension:.25}
+      ]
+    },
+    options:{ scales:{ y:{ beginAtZero:true } } }
+  });
+
+  // Map (choropleth) with cached fetch and lazy-loaded libs
+  const ensureGeo = ensureGeoLibs();
+  const atlasUrl = "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json";
+  const atlasPromise = window.__atlasPromise || (window.__atlasPromise = fetch(atlasUrl).then(r=>r.json()).catch(()=>null));
+  ensureGeo
+    .then(()=> atlasPromise)
+    .then(topology=>{
+      if (!topology || !window.ChartGeo) { throw new Error('no-topology'); }
+      const countries = ChartGeo.topojson.feature(topology, topology.objects.countries).features;
+      const byCountry = {}; subset.forEach(r=>{ byCountry[r.country]=(byCountry[r.country]||0)+r.interactions; });
+      const nameMap = {US:"United States of America", UK:"United Kingdom", DE:"Germany", FR:"France", ES:"Spain", IT:"Italy", BR:"Brazil", JP:"Japan", CN:"China", CA:"Canada"};
+      const values = countries.map(f=>{
+        const nm = f.properties.name;
+        const demoKey = Object.keys(nameMap).find(k=>nameMap[k]===nm);
+        return {feature:f, value: byCountry[demoKey]||0};
+      });
+      makeChart(mapCanvas.getContext('2d'), {
+        type:'choropleth',
+        data:{ labels: values.map(v=>v.feature.properties.name), datasets:[{label:'Interactions', outline: ChartGeo.topojson.mesh(topology, topology.objects.countries, (a,b)=>a!==b), data: values}]},
+        options:{ showOutline:true, showGraticule:true,
+          scales:{ projection:{ axis:'x', projection:'equalEarth' }, color:{ axis:'x', quantize:5, legend:{position:'bottom'} } }
+        }
+      });
+    })
+    .catch(()=> { mapCard.append(el('div','small','(Map unavailable offline)')); });
+}
+
+/*** 2) PERCEPTION / NPS / KAB ***/
+function renderPerception(){
+  const view = clearView(); buildMultiFilters();
+  $("#pageTitle").textContent = ROUTES[1].title; $("#pageSubtitle").textContent = ROUTES[1].subtitle;
+
+  const rows = DATA.nps.filter(r=> matchesMulti(FILTER.ta,r.ta) && matchesMulti(FILTER.country,r.country) && matchesMulti(FILTER.segment,r.segment));
+  const avgNPS = Math.round(rows.reduce((a,b)=>a+b.nps,0)/Math.max(1,rows.length));
+  const avgK = Math.round(rows.reduce((a,b)=>a+b.K,0)/Math.max(1,rows.length));
+  const avgA = Math.round(rows.reduce((a,b)=>a+b.A,0)/Math.max(1,rows.length));
+  const avgB = Math.round(rows.reduce((a,b)=>a+b.B,0)/Math.max(1,rows.length));
+
+  const kpiWrap = el("div","kpis col-12");
+  kpiWrap.append(
+    kpi("NPS (avg)", avgNPS, randBetween(-5,8), npsColor(avgNPS)),
+    kpi("Knowledge score (K)", avgK+"%", randBetween(-3,6), pctColor(avgK)),
+    kpi("Attitude score (A)", avgA+"%", randBetween(-3,6), pctColor(avgA)),
+    kpi("Behavior score (B)", avgB+"%", randBetween(-3,6), pctColor(avgB)),
+  );
+  view.append(kpiWrap);
+
+  const heat = card("NPS heatmap by market × TA","col-6");
+  const grid = el("div","heat-grid");
+  Countries.forEach(c=>{
+    TAs.forEach(ta=>{
+      const vals = rows.filter(r=>r.country===c && r.ta===ta).map(r=>r.nps);
+      const v = vals.length? Math.round(vals.reduce((a,b)=>a+b,0)/vals.length): 0;
+      const cell = el('div','cell', `<div class="small">${c}-${ta.split(' ')[0]}</div>`);
+      cell.style.background = heatColor((v+20)/1.2,0,100); cell.style.borderColor="#1f2e55";
+      const tag = el('div','small', `<span class="badge">NPS ${v}</span>`); tag.style.position="absolute"; tag.style.bottom="4px";
+      cell.append(tag); grid.append(cell);
+    });
+  });
+  heat.append(grid); view.append(heat);
+
+  const kabCard = card("Pre vs Post engagement KAB","col-6");
+  const kabCanvas = canvas(); kabCard.append(kabCanvas); view.append(kabCard);
+  makeChart(kabCanvas.getContext('2d'), {
+    type:'bar',
+    data:{ labels:["Knowledge","Attitude","Behavior"],
+      datasets:[ {label:"Pre", data:[avgK-8, avgA-6, avgB-5]}, {label:"Post", data:[avgK, avgA, avgB]} ] },
+    options:{ scales:{ y:{ beginAtZero:true, max:100 } } }
+  });
+
+  const ts = card("NPS trend over quarters","col-8");
+  const tsCanvas = canvas(110); ts.append(tsCanvas); view.append(ts);
+  const trend = DATA.progressByQuarter.map((q,i)=> avgNPS + Math.round(Math.sin(i/2)*6) );
+  makeChart(tsCanvas.getContext('2d'), {
+    type:'line',
+    data:{ labels: DATA.progressByQuarter.map(x=>x.label), datasets:[{label:'NPS', data:trend, borderWidth:2, tension:.25}]},
+    options:{ scales:{ y:{ suggestedMin:-40, suggestedMax:80 } } }
+  });
+
+  const dd = card("Drivers & detractors (survey text analytics)","col-4");
+  // Compact styling and height match to NPS trend
+  dd.style.padding = '8px';
+  dd.style.minHeight = '0px';
+  dd.append(listBlock("Top drivers", ["Timely scientific updates","Quality of MSL interaction","Relevant CLM content","Rapid medical info response","Clear MOA explanation"]));
+  dd.append(listBlock("Top detractors", ["Infrequent follow‑up","Scheduling friction","Overly generic content","Limited local data"]));
+  dd.style.maxHeight = '';
+  dd.style.overflow = 'auto';
+  view.append(dd);
+  // Match the height of the NPS trend card for visual alignment
+  requestAnimationFrame(()=>{
+    const h = ts && ts.offsetHeight ? ts.offsetHeight : 0;
+    if (h) dd.style.height = h + 'px';
+  });
+}
+
+/*** 3) CONGRESSES & EVENTS ***/
+function renderEvents(){
+  const view = clearView(); buildMultiFilters();
+  $("#pageTitle").textContent = ROUTES[2].title; $("#pageSubtitle").textContent = ROUTES[2].subtitle;
+
+  const rows = DATA.events;
+
+  const kpiWrap = el("div","kpis col-12");
+  const totalAtt = rows.reduce((a,b)=>a+b.attendees,0);
+  const avgBooth = Math.round(rows.reduce((a,b)=>a+b.boothTimeMin,0)/rows.length);
+  const avgRel = Math.round(rows.reduce((a,b)=>a+b.surveyRelevance,0)/rows.length);
+  const totalInsights = rows.reduce((a,b)=>a+b.insights,0);
+  kpiWrap.append(
+    kpi("# Attendees (sum)", fmt(totalAtt), randBetween(-8,12)),
+    kpi("Booth time (avg min)", fmt(avgBooth), randBetween(-5,9)),
+    kpi("Event relevance (avg)", avgRel+"%", randBetween(-3,5), pctColor(avgRel)),
+    kpi("Insights collected (sum)", fmt(totalInsights), randBetween(-4,10))
+  );
+  view.append(kpiWrap);
+
+  const score = card("Event scorecard","col-8");
+  const tbl = el('table','table');
+  tbl.innerHTML = `<thead><tr>
+    <th>Event</th><th>Attendees</th><th>Booth min</th><th>Relevance</th><th>Insights</th><th>Follow‑ups done</th>
+  </tr></thead><tbody>${
+    rows.map(r=>`<tr>
+      <td><span class="badge">${r.name}</span></td>
+      <td>${fmt(r.attendees)}</td>
+      <td>${fmt(r.boothTimeMin)}</td>
+      <td><span style="color:${pctColor(r.surveyRelevance)}">${r.surveyRelevance}%</span></td>
+      <td>${r.insights}</td>
+      <td>${r.followupsDonePct}%</td>
+    </tr>`).join("")
+  }</tbody>`;
+  score.append(tbl); view.append(score);
+
+  const yoy = card("Year-over-year congress performance (attendees)","col-4");
+  const yoyCanvas = canvas(); yoy.append(yoyCanvas); view.append(yoy);
+  makeChart(yoyCanvas.getContext('2d'), {
+    type:'bar',
+    data:{ labels: rows.map(r=>r.name),
+      datasets:[ {label:'Last year', data: rows.map(r=>Math.round(r.attendees*0.92))},
+                 {label:'This year', data: rows.map(r=>r.attendees)} ]},
+    options:{ indexAxis:'y', scales:{ x:{ beginAtZero:true } } }
+  });
+
+  const top = [...rows].sort((a,b)=>b.insights-a.insights).slice(0,7);
+  const topCard = card("Top events by actionable insights","col-12");
+  const topCanvas = canvas(110); topCard.append(topCanvas); view.append(topCard);
+  makeChart(topCanvas.getContext('2d'), {
+    type:'bar',
+    data:{ labels: top.map(r=>r.name), datasets:[{label:'Insights', data: top.map(r=>r.insights)}]},
+    options:{ scales:{ y:{ beginAtZero:true } } }
+  });
+}
+
+/*** 3a) LIBRARY OF CONGRESSES — lives in renderLibrary.js ***/
+function renderLibrary(){
+  // If you prefer the modular file, keep this stub so ROUTES resolves.
+  // The real implementation will be picked up from renderLibrary.js (loaded below).
+  if (window.__extRenderLibrary) return window.__extRenderLibrary();
+  // Fallback (simple message) if renderLibrary.js is missing:
+  const v = clearView(); buildMultiFilters();
+  v.append(el('div','card col-12','<h3>Library of Congresses</h3><div class="small">Missing renderLibrary.js</div>'));
+}
+
+/*** 4) LEARNING & CAPABILITY ***/
+function renderLearning(){
+  const view = clearView(); buildMultiFilters();
+  $("#pageTitle").textContent = ROUTES[4].title; $("#pageSubtitle").textContent = ROUTES[4].subtitle;
+
+  const rows = DATA.learning;
+  const compl = Math.round(rows.reduce((a,b)=>a+b.completion,0)/rows.length);
+  const time = Math.round(rows.reduce((a,b)=>a+b.timeToComplete,0)/rows.length);
+  const knowledge = Math.round(rows.reduce((a,b)=>a+b.knowledge,0)/rows.length);
+  const skill = Math.round(rows.reduce((a,b)=>a+b.skill,0)/rows.length);
+
+  const kpiWrap = el("div","kpis col-12");
+  kpiWrap.append(
+    kpi("Training completion (avg)", compl+"%", randBetween(-3,6), pctColor(compl)),
+    kpi("Avg time to complete (days)", time, randBetween(-2,4)),
+    kpi("Knowledge test (avg)", knowledge+"%", randBetween(-3,6), pctColor(knowledge)),
+    kpi("Skills self‑assessment (avg)", skill+"%", randBetween(-3,6), pctColor(skill))
+  );
+  view.append(kpiWrap);
+
+  const radarCard = card("Capability radar by TA (coverage vs requirement)","col-6");
+  const radarCanvas = canvas(); radarCard.append(radarCanvas); view.append(radarCard);
+  const dims = ["Therapy Knowledge","Clinical Evidence","Data Literacy","Compliance","Engagement","Digital Tools"];
+  const coverage = dims.map(()=>randBetween(55,90));
+  const req = dims.map(()=>randBetween(75,95));
+  makeChart(radarCanvas.getContext('2d'), {
+    type:'radar',
+    data:{ labels: dims, datasets:[ {label:'Coverage', data:coverage}, {label:'Requirement', data:req} ] },
+    options:{ scales:{ r:{ suggestedMin:0, suggestedMax:100 } } }
+  });
+
+  const heat = card("Training compliance heatmap by market","col-6"); const grid = el("div","heat-grid");
+  Countries.forEach(c=>{
+    const v = rows.filter(r=>r.country===c).reduce((a,b)=>a+b.completion,0)/TAs.length;
+    const cell = el('div','cell', `<div class="small">${c}</div>`);
+    cell.style.background = heatColor(v, 0, 100); cell.style.borderColor="#1f2e55";
+    const tag = el('div','small', `<span class="badge">${Math.round(v)}%</span>`); tag.style.position="absolute"; tag.style.bottom="4px";
+    cell.append(tag); grid.append(cell);
+  });
+  heat.append(grid); view.append(heat);
+
+  const trend = card("Readiness score trend","col-12");
+  const tCanvas = canvas(110); trend.append(tCanvas); view.append(trend);
+  makeChart(tCanvas.getContext('2d'), {
+    type:'line',
+    data:{ labels: DATA.progressByQuarter.map(x=>x.label), datasets:[
+      {label:'Knowledge', data: DATA.progressByQuarter.map((_,i)=> knowledge + Math.round(Math.sin(i/2)*4))},
+      {label:'Skills', data: DATA.progressByQuarter.map((_,i)=> skill + Math.round(Math.cos(i/2)*3))}
+    ]},
+    options:{ scales:{ y:{ beginAtZero:true, max:100 } } }
+  });
+}
+
+/*** 5) DIGITAL & MEDIA ***/
+function renderDigital(){
+  const view = clearView(); buildMultiFilters();
+  $("#pageTitle").textContent = ROUTES[5].title; $("#pageSubtitle").textContent = ROUTES[5].subtitle;
+
+  const rows = DATA.digital;
+  const totalVisits = rows.reduce((a,b)=>a+b.visits,0);
+  const unique = rows.reduce((a,b)=>a+b.unique,0);
+  const avgOpen = Math.round(rows.reduce((a,b)=>a+b.emailOpen,0)/rows.length);
+  const avgCTR = (rows.reduce((a,b)=>a+Number(b.emailCTR),0)/rows.length).toFixed(1);
+
+  const kpiWrap = el("div","kpis col-12");
+  kpiWrap.append(
+    kpi("Website visits (sum)", fmt(totalVisits), randBetween(-8,14)),
+    kpi("Unique visitors (sum)", fmt(unique), randBetween(-8,14)),
+    kpi("Email open rate (avg)", avgOpen+"%", randBetween(-4,8), pctColor(avgOpen)),
+    kpi("Email CTR (avg)", avgCTR+"%", randBetween(-2,6))
+  );
+  view.append(kpiWrap);
+
+  const funnel = card("Funnel: digital reach → engagement → follow‑up","col-7");
+  const fCanvas = canvas(); funnel.append(fCanvas); view.append(funnel);
+  const reach = rows.reduce((a,b)=>a+b.impressions,0);
+  const engagement = rows.reduce((a,b)=>a+b.views+b.clicks,0);
+  const followup = Math.round(engagement*0.18);
+  makeChart(fCanvas.getContext('2d'), {
+    type:'bar',
+    data:{ labels:["Reach","Engagement","Follow‑up"], datasets:[{label:'Volume', data:[reach, engagement, followup]}] },
+    options:{ indexAxis:'y', scales:{ x:{ beginAtZero:true } } }
+  });
+
+  const leader = card("Top‑performing content (engagement rate)","col-5");
+  const tbl = el('table','table');
+  const scored = rows.map(r=>({name:r.asset, rate: ((r.clicks+r.views)/(r.impressions||1)*100).toFixed(2), seg:r.segment}))
+                     .sort((a,b)=>b.rate-a.rate).slice(0,8);
+  tbl.innerHTML = `<thead><tr><th>Asset</th><th>Segment</th><th>Eng. rate</th></tr></thead>
+    <tbody>${scored.map(r=>`<tr><td>${r.name}</td><td><span class="badge">${r.seg}</span></td><td>${r.rate}%</td></tr>`).join("")}</tbody>`;
+  leader.append(tbl); view.append(leader);
+
+  const geo = card("Geographic breakdown of digital engagement","col-12");
+  const gCanvas = canvas(110); geo.append(gCanvas); view.append(geo);
+  const byC = Countries.map(c=>{
+    const sample = rows[randBetween(0,rows.length-1)];
+    return {c, v: sample.views + sample.clicks + sample.shares + randBetween(400,3000)}
+  });
+  makeChart(gCanvas.getContext('2d'), {
+    type:'bar',
+    data:{ labels:byC.map(x=>x.c), datasets:[{label:'Engagements', data:byC.map(x=>x.v)}]},
+    options:{ scales:{ y:{ beginAtZero:true } } }
+  });
+}
+
+/*** 6) FOUNDATIONAL DATA & INSIGHTS ***/
+function renderFoundational(){
+  const view = clearView(); buildMultiFilters();
+  $("#pageTitle").textContent = ROUTES[6].title; $("#pageSubtitle").textContent = ROUTES[6].subtitle;
+
+  const rows = DATA.foundational;
+  const kpiWrap = el("div","kpis col-12");
+  const sources = rows.reduce((a,b)=>a+b.internalSources,0);
+  const ext = rows.reduce((a,b)=>a+b.externalDatasets,0);
+  const q = Math.round(rows.reduce((a,b)=>a+b.quality,0)/rows.length);
+  const autoAvg = Math.round(rows.reduce((a,b)=>a+b.automatedPct,0)/rows.length);
+  kpiWrap.append(
+    kpi("# Active internal data sources", fmt(sources), randBetween(-1,4)),
+    kpi("# External licensed datasets", fmt(ext), randBetween(-2,3)),
+    kpi("Data quality score (avg)", q+"%", randBetween(-3,5), pctColor(q)),
+    kpi("% sources automated onboarding (avg)", autoAvg+"%", randBetween(-3,6), pctColor(autoAvg)),
+  );
+  view.append(kpiWrap);
+
+  const coverage = card("Data coverage heatmap (TA × metric type)","col-6");
+  const grid = el("div","heat-grid");
+  const metrics = ["Activity","NPS","KAB","Events","Learning","Digital","Quality","Automation"];
+  TAs.forEach(ta=>{
+    metrics.forEach(m=>{
+      const v = randBetween(30,100);
+      const cell = el('div','cell', `<div class="small">${ta.split(' ')[0]}<br>${m}</div>`);
+      cell.style.background = heatColor(v, 0, 100); cell.style.borderColor="#1f2e55";
+      const tag = el('div','small', `<span class="badge">${v}%</span>`); tag.style.position="absolute"; tag.style.bottom="4px";
+      cell.append(tag); grid.append(cell);
+    });
+  });
+  coverage.append(grid); view.append(coverage);
+
+  const qual = card("Data quality trend over time","col-6");
+  const qCanvas = canvas(); qual.append(qCanvas); view.append(qual);
+  makeChart(qCanvas.getContext('2d'), {
+    type:'line',
+    data:{ labels: DATA.progressByQuarter.map(x=>x.label), datasets:[
+      {label:'Completeness', data: DATA.progressByQuarter.map((_,i)=> 80 + Math.round(Math.sin(i/2)*6))},
+      {label:'Accuracy', data: DATA.progressByQuarter.map((_,i)=> 88 + Math.round(Math.cos(i/3)*4))},
+      {label:'Timeliness', data: DATA.progressByQuarter.map((_,i)=> 84 + Math.round(Math.sin(i/3)*5))}
+    ]},
+    options:{ scales:{ y:{ beginAtZero:true, max:100 } } }
+  });
+
+  /* Line chart: Automation progress tracker (trend) */
+  const auto = card("Automation progress tracker (trend)","col-12");
+  const aCanvas = canvas(110); auto.append(aCanvas); view.append(auto);
+  const autoTrend = DATA.progressByQuarter.map((_,i)=> autoAvg + Math.round(Math.sin(i/2)*5 + Math.random()*2));
+  makeChart(aCanvas.getContext('2d'), {
+    type:'line',
+    data:{ labels: DATA.progressByQuarter.map(x=>x.label), datasets:[{label:'% Automated onboarding', data:autoTrend, borderWidth:2, tension:.25}] },
+    options:{ scales:{ y:{ beginAtZero:true, max:100 } } }
+  });
+}
+
+/*** 7) CEO VIEW (EXECUTIVE) ***/
+function renderCEO(){
+  const view = clearView(); buildMultiFilters();
+  $("#pageTitle").textContent = ROUTES[7].title; $("#pageSubtitle").textContent = ROUTES[7].subtitle;
+
+  const kpiWrap = el("div","kpis col-12");
+  const subset = DATA.interactions.rows.filter(passFilters);
+  const totalInteractions = subset.reduce((a,b)=>a+b.interactions,0);
+
+  const npsRows = DATA.nps.filter(r => matchesMulti(FILTER.ta,r.ta) && matchesMulti(FILTER.country,r.country) && matchesMulti(FILTER.segment,r.segment));
+  const avgNPS = Math.round(npsRows.reduce((a,b)=>a+b.nps,0)/Math.max(1,npsRows.length)) || 0;
+
+  const digital = DATA.digital;
+  const eng = digital.reduce((a,b)=>a+b.views+b.clicks,0);
+  const estCost = Math.max(1, (subset.length*45) + digital.length*600); // mock
+  const roiPct = Math.round(((totalInteractions*0.4 + eng*0.6) / estCost) * 100);
+
+  const qualAvg = Math.round(DATA.foundational.reduce((a,b)=>a+b.quality,0)/DATA.foundational.length);
+  const complianceBase = Math.min(99, Math.max(50, Math.round(qualAvg - 3 + Math.random()*6)));
+
+  kpiWrap.append(
+    kpi("Total interactions (sum)", fmt(totalInteractions), Math.round((Math.random()*12)-4)),
+    kpi("Average NPS", avgNPS, Math.round((Math.random()*8)-3), npsColor(avgNPS)),
+    kpi("ROI estimate", roiPct+"%", Math.round((Math.random()*10)-5), pctColor(Math.min(100,roiPct))),
+    kpi("Compliance pass rate (est.)", complianceBase+"%", Math.round((Math.random()*6)-3), pctColor(complianceBase))
+  );
+  view.append(kpiWrap);
+
+  const predCard = card("Predictive HCP engagement forecast (next quarter)","col-6");
+  const predCanvas = canvas(); predCard.append(predCanvas); view.append(predCard);
+  const byCountry = {}; subset.forEach(r=>{ byCountry[r.country]=(byCountry[r.country]||0)+r.interactions; });
+  const predLabels = Object.keys(byCountry).length? Object.keys(byCountry) : Countries;
+  const baseVals = predLabels.map(c=>byCountry[c]||randBetween(400,2000));
+  const predVals = baseVals.map(v=> Math.round(v*(1 + (Math.random()*0.15 - 0.02))));
+  makeChart(predCanvas.getContext('2d'), { type:'bar',
+    data:{ labels: predLabels, datasets:[{label:'Predicted interactions (Q+1)', data: predVals}]},
+    options:{ scales:{ y:{ beginAtZero:true } } }
+  });
+
+  const compCard = card("Competitive intelligence benchmark","col-6");
+  const compCanvas = canvas(); compCard.append(compCanvas); view.append(compCard);
+  const axes = ["Share of Voice","NPS","Event Presence","Digital Share","Content Resonance"];
+  const us = axes.map(()=>randBetween(60,90)); const comp = axes.map(()=>randBetween(50,85));
+  makeChart(compCanvas.getContext('2d'), { type:'radar',
+    data:{ labels: axes, datasets:[ {label:'Us', data:us}, {label:'Competitor', data:comp} ] },
+    options:{ scales:{ r:{ suggestedMin:0, suggestedMax:100 } } }
+  });
+
+  const sentCard = card("Sentiment trend & content resonance","col-7");
+  const sentCanvas = canvas(); sentCard.append(sentCanvas); view.append(sentCard);
+  const qLabels = DATA.progressByQuarter.map(x=>x.label);
+  const sentiment = qLabels.map((_,i)=> 60 + Math.round(Math.sin(i/2)*10 + Math.random()*4));
+  makeChart(sentCanvas.getContext('2d'), { type:'line',
+    data:{ labels:qLabels, datasets:[{label:'Sentiment (AI)', data:sentiment, borderWidth:2, tension:.25}]},
+    options:{ scales:{ y:{ beginAtZero:true, max:100 } } }
+  });
+
+  const resCard = card("Content resonance (top assets)","col-5");
+  const resCanvas = canvas(); resCard.append(resCanvas); view.append(resCard);
+  const scored = DATA.digital.map(r=>({name:r.asset, score: ((r.clicks+r.views)/(r.impressions||1)*100)})).sort((a,b)=>b.score-a.score).slice(0,7);
+  makeChart(resCanvas.getContext('2d'), { type:'bar',
+    data:{ labels:scored.map(x=>x.name), datasets:[{label:'Resonance %', data:scored.map(x=>x.score.toFixed(2))}]},
+    options:{ scales:{ y:{ beginAtZero:true } } }
+  });
+
+  const linkCard = card("KPI linkage: Training completion → NPS (country)","col-6");
+  const linkCanvas = canvas(); linkCard.append(linkCanvas); view.append(linkCard);
+  const byCountryCompletion = Countries.map(c=>{
+    const rows = DATA.learning.filter(r=>r.country===c);
+    const compl = rows.reduce((a,b)=>a+b.completion,0)/Math.max(1,rows.length);
+    const npsC = DATA.nps.filter(r=>r.country===c);
+    const npsAvg = npsC.length? (npsC.reduce((a,b)=>a+b.nps,0)/npsC.length) : randBetween(-10,60);
+    return {x: Math.round(compl), y: Math.round(npsAvg), country:c};
+  });
+  makeChart(linkCanvas.getContext('2d'), { type:'scatter',
+    data:{ datasets:[{label:'Country', data: byCountryCompletion}]},
+    options:{ plugins:{ tooltip:{ callbacks:{ label:(ctx)=> `${ctx.raw.country}: Completion ${ctx.raw.x}%, NPS ${ctx.raw.y}` } } },
+      scales:{ x:{ title:{display:true, text:'Training completion %'}, min:40, max:100 }, y:{ title:{display:true, text:'NPS'}, min:-40, max:80 } } }
+  });
+
+  const roiCard = card("ROI & cost efficiency by channel","col-6");
+  const roiCanvas = canvas(); roiCard.append(roiCanvas); view.append(roiCard);
+  const chAgg = {}; subset.forEach(r=>{ chAgg[r.channel]=(chAgg[r.channel]||0)+r.interactions; });
+  const channels = Object.keys(chAgg).length? Object.keys(chAgg) : ["F2F","Remote","CLM/IVA","Email","Web","Events"];
+  const points = channels.map(ch=>{
+    const interactions = chAgg[ch] || randBetween(400,4000);
+    const cost = Math.round(interactions * (0.6 + Math.random()*1.4));
+    const roi = Math.max(5, Math.round((interactions / Math.max(1,cost)) * 100));
+    return {x: cost, y: interactions, r: Math.max(5, Math.min(25, Math.round(roi/4))), label: `${ch} (ROI ${roi}%)`};
+  });
+  makeChart(roiCanvas.getContext('2d'), { type:'bubble',
+    data:{ datasets:[{ label:'Channel', data: points.map(p=>({x:p.x,y:p.y,r:p.r,label:p.label})) }]},
+    options:{ plugins:{ tooltip:{ callbacks:{ label:(c)=> `${c.raw.label} • Cost ${fmt(c.raw.x)} • Interactions ${fmt(c.raw.y)}` } } },
+      scales:{ x:{ title:{display:true, text:'Estimated cost (mock)'} }, y:{ title:{display:true, text:'Interactions'} } } }
+  });
+
+  /* Line chart: Compliance & governance health (trend) */
+  const compHealth = card("Compliance & governance health (trend)","col-12");
+  const compCanvas2 = canvas(110); compHealth.append(compCanvas2); view.append(compHealth);
+  const compTrend = DATA.progressByQuarter.map((_,i)=> Math.max(50, Math.min(99, complianceBase + Math.round(Math.sin(i/3)*4 + Math.random()*3))));
+  makeChart(compCanvas2.getContext('2d'), { type:'line',
+    data:{ labels: DATA.progressByQuarter.map(x=>x.label), datasets:[{label:'Compliance pass rate %', data:compTrend, borderWidth:2, tension:.25}] },
+    options:{ scales:{ y:{ beginAtZero:true, max:100 } } }
+  });
+}
+
+/* =========================
+   Boot (with “Bonus” polish)
+========================= */
+/* Auto-collapse on first load for narrow screens */
+try{
+  if (!localStorage.getItem("sidebarCollapsed") && window.matchMedia && window.matchMedia("(max-width: 900px)").matches) {
+    localStorage.setItem("sidebarCollapsed","1");
+  }
+}catch{}
+
+/* Build menu (menu.js exposes setupNav/updateActiveNav) and render */
+function __initApp(){
+  if (typeof setupNav === 'function') setupNav();
+  if (typeof updateActiveNav === 'function') updateActiveNav();
+  if (typeof buildMultiFilters === 'function') buildMultiFilters();
+  route();
+  window.addEventListener("hashchange", route);
+  // Filters section collapse/expand
+  try{
+    const hr = document.querySelector('.header-right');
+    const btn = document.querySelector('.filters-toggle');
+    if (hr && btn){
+      const setState = ()=>{
+        const expanded = !hr.classList.contains('collapsed');
+        btn.setAttribute('aria-expanded', String(expanded));
+        const pm = btn.querySelector('.pm'); if (pm) pm.textContent = expanded? '−' : '+';
+        btn.title = expanded? 'Hide filters' : 'Show filters';
+      };
+      // default collapsed
+      hr.classList.add('collapsed');
+      setState();
+      btn.addEventListener('click', ()=>{ 
+        hr.classList.toggle('collapsed'); 
+        setState(); 
+        // When collapsing the header filters, close any open dropdowns
+        const isCollapsed = hr.classList.contains('collapsed');
+        if (isCollapsed) {
+          try { document.querySelectorAll('#filtersRow details[open]').forEach(d=> d.removeAttribute('open')); } catch {}
+        }
+      });
+    }
+  }catch{}
+}
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', __initApp);
+} else {
+  __initApp();
+}
+</script>
+
+<!-- Load the modular sub-page for "Library of Congresses" -->
+<script>
+/* Bridge so ROUTES.render points to external implementation if present */
+window.__extRenderLibrary = null;
+</script>
+<script src="../renderLibrary.js"></script>
+<script>
+/* If the external file defined renderLibrary(), wire it to our stub */
+if (typeof renderLibrary === "function") {
+  window.__extRenderLibrary = renderLibrary;
+}
+</script>
+
 </body>
 </html>
-<!-- SC&M index removed per undo request -->

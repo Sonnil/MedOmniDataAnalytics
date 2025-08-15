@@ -1,346 +1,2413 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Medical Affairs Analytics Demo</title>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Medical Affairs Analytics Demo</title>
 
-  <!-- Chart.js + Plugins (CDN) -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3"></script>
+<!-- Chart.js + date adapter will be lazy‑loaded on demand -->
 
-  <!-- Optional: chartjs-chart-geo for the world map choropleth. -->
-  <script src="https://cdn.jsdelivr.net/npm/topojson-client@3"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-geo@4.3.0/build/index.umd.min.js"></script>
+<!-- Optional: geo choropleth libs will be lazy‑loaded on demand -->
 
-  <style>
-    :root{
-      --bg:#0b1020; --card:#121833; --muted:#94a3b8; --text:#e2e8f0; --accent:#7dd3fc; --accent-2:#a78bfa;
-      --good:#22c55e; --warn:#f59e0b; --bad:#ef4444;
-    }
-    *{box-sizing:border-box}
-    html,body{height:100%}
-    body{ margin:0; background:linear-gradient(180deg,#0b1020 0%,#0b1020 60%,#0a0f1c 100%); color:var(--text); font:15px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji" }
-    .app{display:grid; grid-template-columns:260px 1fr; min-height:100vh}
-    aside{ background:#0a0f1c; border-right:1px solid #1f2945; padding:16px; position:sticky; top:0; height:100dvh; overflow:auto }
-    .logo{display:flex; gap:10px; align-items:center; margin-bottom:16px}
-    .logo-circle{width:34px; height:34px; border-radius:50%; background:linear-gradient(135deg,var(--accent),var(--accent-2))}
-    h1{font-size:16px; margin:0}
-    .small{color:var(--muted); font-size:12px}
-    nav{display:flex; flex-direction:column; gap:6px; margin-top:12px}
-    nav a{ text-decoration:none; color:var(--text); padding:10px 12px; border-radius:8px; display:flex; gap:10px; align-items:center; border:1px solid transparent }
-    nav a:hover{ background:#0f1730; border-color:#1f2945 }
-    nav a.active{ background:#141d3b; border-color:#28345d }
-    main{padding:20px}
-    .header{ display:flex; gap:16px; align-items:center; flex-wrap:wrap; margin-bottom:16px }
-    .filters{ display:flex; gap:8px; flex-wrap:wrap; margin-left:auto }
-    select, .chip{ background:#0f1730; border:1px solid #27325a; color:var(--text); padding:8px 10px; border-radius:8px }
-    .grid{ display:grid; grid-template-columns: repeat(12, 1fr); gap:12px }
-    .card{ background:var(--card); border:1px solid #1f2945; border-radius:12px; padding:14px; min-height:120px }
-    .card h3{margin:0 0 8px 0; font-size:14px; color:#cbd5e1}
-    .kpis{display:grid; grid-template-columns:repeat(4,1fr); gap:12px}
-    .kpi{background:#0f1730; border:1px solid #253059; border-radius:12px; padding:12px}
-    .kpi .val{font-size:22px; font-weight:700}
-    .kpi .delta{font-size:12px}
-    .delta.up{color:var(--good)} .delta.down{color:var(--bad)} .delta.flat{color:var(--muted)}
-    .col-3{grid-column:span 3} .col-4{grid-column:span 4} .col-5{grid-column:span 5}
-    .col-6{grid-column:span 6} .col-7{grid-column:span 7} .col-8{grid-column:span 8} .col-12{grid-column:span 12}
-    .table{width:100%; border-collapse: collapse; font-size:14px}
-    .table th,.table td{padding:8px 10px; border-bottom:1px solid #223055}
-    .badge{padding:2px 6px; border-radius:6px; font-size:12px; border:1px solid #2a3a6a; background:#0f1730; color:#e5e7eb}
-    .heat-grid{ display:grid; gap:4px; grid-template-columns:repeat(8, minmax(0,1fr)); }
-    .cell{ aspect-ratio:1/1; border-radius:6px; display:flex; align-items:center; justify-content:center; font-size:11px; border:1px solid #223055; background:#101a39; color:#dbeafe }
-    footer{margin-top:14px; color:var(--muted); font-size:12px}
-    @media (max-width: 1100px){ .app{grid-template-columns:72px 1fr} aside{padding:8px} nav a span.label{display:none} .kpis{grid-template-columns:repeat(2,1fr)} .col-6,.col-7,.col-8{grid-column:span 12} }
-    @media (max-width: 720px){ .grid{grid-template-columns:repeat(6,1fr)} .col-4{grid-column:span 6} .kpis{grid-template-columns:1fr} }
-  </style>
+<!-- Collapsible menu controller (defer) -->
+<script defer src="menu.js"></script>
+<!-- Shared helpers/data (defer to be ready before inline script) -->
+<script defer src="shared.js"></script>
+
+<style>
+:root{
+  --bg:#0b1020; --card:#121833; --muted:#94a3b8; --text:#e2e8f0; --accent:#7dd3fc; --accent-2:#a78bfa;
+  --good:#22c55e; --warn:#f59e0b; --bad:#ef4444;
+  --aside: 260px;              /* default expanded */
+  --aside-collapsed: 72px;     /* collapsed width */
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;
+  background:linear-gradient(180deg,#0b1020 0%,#0b1020 60%,#0a0f1c 100%);
+  color:var(--text); font:15px/1.4 system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,"Apple Color Emoji","Segoe UI Emoji";
+}
+
+/* Layout uses aside width variable for smooth transitions */
+.header{ width:100%; box-sizing:border-box; padding:12px 20px; border-bottom:1px solid #1f2945; background:#0a0f1c; position:sticky; top:0; z-index:5 }
+.app{ display:grid; grid-template-columns: auto 1fr; min-height:calc(100vh - 64px); }
+aside{
+  width: var(--aside);
+  background:#0a0f1c; border-right:1px solid #1f2945; padding:16px;
+  position:sticky; top:0; height:100vh; overflow:auto;
+  display:flex; flex-direction:column;
+  transition: width .22s ease, padding .22s ease, box-shadow .22s ease;
+  box-shadow: 0 0 0 rgba(0,0,0,0);
+}
+.app.sidebar-collapsed aside{
+  width: var(--aside-collapsed);
+  padding:8px;
+  box-shadow: 6px 0 18px rgba(0,0,0,.25);
+}
+/* Hover “peek” when collapsed */
+.app.sidebar-collapsed aside:hover{
+  width: calc(var(--aside-collapsed) + 28px);
+}
+
+.logo{display:flex; gap:10px; align-items:center; margin-bottom:16px}
+.logo-circle{display:none}
+.logo-img{width:34px; height:34px; border-radius:6px; display:block}
+h1{font-size:16px; margin:0}
+.small{color:var(--muted); font-size:12px}
+
+/* breadcrumb removed — page title shown in header */
+
+nav{display:flex; flex-direction:column; gap:6px; margin-top:12px; flex:1 1 auto; overflow:auto; min-height:0}
+nav a{
+  text-decoration:none; color:var(--text); padding:10px 12px; border-radius:8px; display:flex; gap:10px; align-items:center;
+  border:1px solid transparent; transition: background .15s ease, border-color .15s ease, opacity .15s ease;
+}
+/* expander and subnav styles */
+.expander{ display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; border-radius:4px; background:transparent; color:var(--muted); font-weight:700 }
+.nav-item .subnav{ margin-left:22px; display:block }
+.nav-item .sub-link{ display:flex; gap:8px; padding:8px 10px; color:var(--muted); text-decoration:none; border-radius:6px }
+.nav-item .sub-link:hover{ background:#0f1730 }
+nav a:hover{background:#0f1730; border-color:#1f2945}
+nav a.active{background:#141d3b; border-color:#28345d}
+/* Also hide the sidebar toggle button label when collapsed so only the hamburger icon shows */
+.app.sidebar-collapsed .btn-label { display: none !important; }
+
+main{padding:20px}
+.header{ display:grid; grid-template-columns: 1fr auto; gap:16px; align-items:center; margin-bottom:16px }
+.header-left{ display:flex; flex-direction:column; align-items:flex-start; gap:8px; min-width:0 }
+.header-left .logo{ margin-bottom:0 }
+.header-left .logo h1{ color:#ffffff }
+.header-right{ display:flex; flex-direction:column; align-items:flex-end; justify-content:flex-start; gap:10px; margin-left:16px }
+.header-right .filters{ margin-left:0; width:100%; justify-content:flex-end }
+.header-right .active-filters{ margin-top:0; justify-content:flex-end }
+.filters .filters-row{ overflow:visible; max-height:420px; opacity:1; transition:max-height .22s ease, opacity .22s ease }
+.header-right.collapsed .filters .filters-row,
+.filters-card.collapsed .filters-row{ max-height:0; opacity:0; pointer-events:none; overflow:hidden }
+/* When header is collapsed, also remove the filters-row from layout so the funnel sits flush right */
+.header-right.collapsed .filters .filters-row{ display:none !important }
+.filters-toggle{ background:transparent; border:1px solid #27325a; color:#e2e8f0; border-radius:999px; padding:4px 10px; font-size:12px; cursor:pointer; display:inline-flex; align-items:center; gap:8px }
+.filters-toggle:hover{ background:#0f1730 }
+.filters-toggle .icon{ width:14px; height:14px; display:inline-block; }
+.filters-toggle .icon svg{ width:14px; height:14px; display:block; fill:#e2e8f0 }
+.filters-toggle .pm{ font-weight:700; font-size:14px; line-height:1 }
+.title-wrap{ display:flex; flex-direction:column; line-height:1.2 }
+#pageTitle{ font-size:13px; color:var(--muted) }
+#pageSubtitle.small{ margin-top:2px }
+.filters{ display:flex; gap:6px; flex-wrap:wrap; margin-left:0; align-items:center }
+.filters-row{ display:flex; gap:8px; flex-wrap:wrap; align-items:center }
+.filter{ position:relative }
+.filter details{ background:#0f1730; border:1px solid #27325a; border-radius:10px; }
+.filter summary{ list-style:none; padding:8px 10px; cursor:pointer; font-size:14px; max-width:260px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
+.filter summary::-webkit-details-marker{display:none}
+.pop{ position:absolute; z-index:10; min-width:260px; background:#0f1730; border:1px solid #27325a; border-radius:10px; padding:8px; box-shadow:0 8px 24px rgba(0,0,0,.35); top: calc(100% + 4px); left: 0; max-height: min(320px, 60vh); overflow:auto }
+.filter.drop-up .pop{ bottom: calc(100% + 4px); top:auto }
+.filter.align-right .pop{ left:auto; right:0 }
+.chklist{ max-height:220px; overflow:auto; padding:4px 6px; display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+.chklist label{ display:flex; align-items:center; gap:6px; padding:6px 8px; border:1px solid #223055; border-radius:8px; }
+.applyRow{ display:flex; gap:6px; justify-content:space-between; padding:6px 2px 2px; }
+.btn{ background:#141d3b; border:1px solid #2a3a6a; color:#e2e8f0; border-radius:8px; padding:6px 10px; cursor:pointer; font-size:13px }
+.btn.secondary{ background:transparent }
+.badge{ padding:2px 6px; border-radius:6px; font-size:12px; border:1px solid #2a3a6a; background:#0f1730; color:#e5e7eb }
+
+/* Applied filters (chips) */
+.active-filters{ display:flex; flex-wrap:wrap; gap:6px; margin-left:0; margin-top:0 }
+.chip{ display:inline-flex; align-items:center; gap:6px; border:1px solid #27325a; background:#101736; color:#e2e8f0; border-radius:999px; padding:4px 8px; font-size:10px }
+.chip .x{ background:transparent; border:0; color:#94a3b8; cursor:pointer; line-height:1; font-size:14px; padding:0 2px }
+.chip .x:hover{ color:#e2e8f0 }
+.active-filters .clear-all{ margin-left:8px; background:transparent; border:1px solid #27325a; color:#cbd5e1; border-radius:999px; padding:4px 10px; font-size:10px; cursor:pointer }
+.active-filters .clear-all:hover{ background:#0f1730 }
+
+/* Filter summary inline clear button */
+.filter summary .clear-btn{ margin-left:8px; background:transparent; border:1px solid #27325a; color:#94a3b8; border-radius:8px; padding:0 6px; font-size:12px; line-height:20px; display:inline-flex; align-items:center }
+.filter summary .clear-btn:hover{ color:#e2e8f0; background:#0f1730 }
+
+.grid{ display:grid; grid-template-columns:repeat(12,1fr); gap:12px }
+.card{ background:var(--card); border:1px solid #1f2945; border-radius:12px; padding:14px; min-height:120px; box-shadow:0 1px 0 rgba(255,255,255,0.03) inset }
+.card h3{ margin:0 0 8px 0; font-size:14px; color:#cbd5e1 }
+/* Single-row KPI container */
+.kpis{ display:flex; flex-wrap:nowrap; gap:12px; align-items:stretch }
+/* KPI card as 3-row grid: title (fixed), value (auto), delta (fixed) */
+.kpi{ background:#0f1730; border:1px solid #253059; border-radius:12px; padding:12px; flex:1 1 0; min-width:0; 
+  display:grid; grid-template-rows: calc(16px * var(--kpi-scale)) 1fr calc(16px * var(--kpi-scale));
+  justify-items:center; align-items:center; text-align:center }
+/* Auto-scale KPI typography using a container-provided variable (set via JS) */
+.kpis{ --kpi-scale: 1; }
+.kpi .small{ font-size: calc(12px * var(--kpi-scale)); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; line-height: calc(16px * var(--kpi-scale)); }
+.kpi .val{ font-size: calc(22px * var(--kpi-scale)); font-weight:700 }
+.kpi .delta{ font-size: calc(12px * var(--kpi-scale)); line-height: calc(16px * var(--kpi-scale)); }
+.delta.up{color:var(--good)} .delta.down{color:var(--bad)} .delta.flat{color:var(--muted)}
+
+.table{width:100%; border-collapse: collapse; font-size:14px}
+.table th,.table td{padding:8px 10px; border-bottom:1px solid #223055}
+.heat-grid{ display:grid; gap:4px; grid-template-columns:repeat(8,minmax(0,1fr)) }
+.cell{ aspect-ratio:1/1; border-radius:6px; display:flex; align-items:center; justify-content:center; font-size:11px; border:1px solid #223055; background:#101a39; color:#dbeafe; position:relative; }
+/* aside footer / built-by area */
+.aside-footer{ margin-top:auto; color:var(--muted); font-size:12px; display:flex; align-items:center; justify-content:center; }
+.aside-footer .built-full{ display:flex; gap:6px; align-items:center; }
+.aside-footer .heart{ color:var(--bad); font-size:16px; line-height:1 }
+.aside-footer .built-text{ color:var(--muted); }
+.aside-footer .initials{ display:none; font-weight:700; color:var(--text); margin-left:2px }
+.sr-only{ position:absolute !important; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0 }
+
+/* Collapsed: hide full text, show compact heart + initials */
+.app.sidebar-collapsed .aside-footer .built-full .built-text{ display:none }
+.app.sidebar-collapsed .aside-footer .initials{ display:inline-block; }
+.app.sidebar-collapsed .aside-footer{ justify-content:center }
+
+/* Collapsible sidebar behavior — applies at all sizes */
+/* Collapsed state handled via variables and selectors above; no empty rules needed */
+.app.sidebar-collapsed nav a .label { display: none; } /* hide labels, keep dots */
+
+/* When fully collapsed, hide the nav categories and footer so only the hamburger toggle is visible */
+.app.sidebar-collapsed aside nav,
+.app.sidebar-collapsed aside .aside-footer {
+  display: none !important;
+}
+
+/* Ensure the injected sidebar-top (toggle) is visible and centered */
+.sidebar-top{ display:flex; align-items:center; justify-content:center; margin-bottom:10px }
+.app.sidebar-collapsed aside .sidebar-top{ margin:0 auto; }
+
+/* Responsive */
+@media (max-width:1100px){
+  /* Auto compact layout even without manual toggle */
+  aside{padding:8px}
+  nav a span.label{display:none}
+  .kpis{grid-template-columns:repeat(2,1fr)}
+  .col-6,.col-7,.col-8{grid-column:span 12}
+}
+@media (max-width:720px){
+  .grid{grid-template-columns:repeat(6,1fr)}
+  .kpis{grid-template-columns:1fr}
+}
+.col-3{grid-column:span 3} .col-4{grid-column:span 4} .col-5{grid-column:span 5}
+.col-6{grid-column:span 6} .col-7{grid-column:span 7} .col-8{grid-column:span 8} .col-12{grid-column:span 12}
+</style>
 </head>
 <body>
-  <div class="app">
-    <aside>
-      <div class="logo">
-        <div class="logo-circle"></div>
-        <div>
-          <h1>MedAffairs BI</h1>
-          <div class="small">Demo analytics suite</div>
-        </div>
-      </div>
-      <nav id="nav"></nav>
-      <footer>9 Demo. Sample data only.</footer>
-    </aside>
-
-    <main>
-      <div class="header">
-        <div>
+  <div class="header">
+      <!-- The ☰ Menu button is injected by menu.js; no markup needed here -->
+      <div class="header-left">
+        <a href="index.html" class="logo" aria-label="Home">
+          <img class="logo-img" src="https://www.sanofi.com/favicon.ico" alt="Sanofi" />
+          <div>
+            <h1>MedAffairs BI</h1>
+          </div>
+        </a>
+        <div class="title-wrap">
           <div style="font-weight:700" id="pageTitle">Dashboard</div>
           <div class="small" id="pageSubtitle">Interactive demo</div>
         </div>
-        <div class="filters">
-          <select id="filterTA"><option value="All">All TAs</option></select>
-          <select id="filterProduct"><option value="All">All products</option></select>
-          <select id="filterCountry"><option value="All">All countries</option></select>
-          <select id="filterSegment"><option value="All">All HCP segments</option></select>
+      </div>
+      <!-- Right column: filters on top-right, breadcrumbs below -->
+      <div class="header-right">
+        <div class="filters" id="filters">
+          <button class="filters-toggle" type="button" aria-controls="filtersRow" aria-expanded="false" title="Show filters">
+            <span class="icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M2 5h20v2L14 14v5l-4 2v-7L2 7V5z"></path>
+              </svg>
+            </span>
+            <span>Filters</span>
+            <span class="pm" aria-hidden="true">+</span>
+          </button>
+          <div class="filters-row" id="filtersRow"></div>
         </div>
+        <div id="activeFilters" class="active-filters"></div>
       </div>
+  </div>
 
-      <!-- DASHBOARD CONTAINER -->
-
-      <!doctype html>
-      <html lang="en">
-      <head>
-      <meta charset="utf-8" />
-      <meta name="viewport" content="width=device-width, initial-scale=1" />
-      <title>Medical Affairs Analytics Demo</title>
-
-      <!-- Chart.js + Plugins (CDN) -->
-      <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
-      <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3"></script>
-
-      <!-- Optional: chartjs-chart-geo for the world map choropleth.
-           Works offline if you save the two <script> files locally later. -->
-      <script src="https://cdn.jsdelivr.net/npm/topojson-client@3"></script>
-      <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-geo@4.3.0/build/index.umd.min.js"></script>
-
-      <style>
-      :root{
-        --bg:#0b1020; --card:#121833; --muted:#94a3b8; --text:#e2e8f0; --accent:#7dd3fc; --accent-2:#a78bfa;
-        --good:#22c55e; --warn:#f59e0b; --bad:#ef4444;
-      }
-      *{box-sizing:border-box}
-      html,body{height:100%}
-      body{
-        margin:0; background:linear-gradient(180deg,#0b1020 0%,#0b1020 60%,#0a0f1c 100%);
-        color:var(--text); font: 15px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
-      }
-      .app{display:grid; grid-template-columns:260px 1fr; min-height:100vh}
-      aside{
-        background:#0a0f1c; border-right:1px solid #1f2945; padding:16px; position:sticky; top:0; height:100dvh; overflow:auto;
-      }
-      .logo{display:flex; gap:10px; align-items:center; margin-bottom:16px}
-      .logo-circle{width:34px; height:34px; border-radius:50%; background:linear-gradient(135deg,var(--accent),var(--accent-2))}
-      h1{font-size:16px; margin:0}
-      .small{color:var(--muted); font-size:12px}
-      nav{display:flex; flex-direction:column; gap:6px; margin-top:12px}
-      nav a{
-        text-decoration:none; color:var(--text); padding:10px 12px; border-radius:8px; display:flex; gap:10px; align-items:center;
-        border:1px solid transparent;
-      }
-      nav a:hover{background:#0f1730; border-color:#1f2945}
-      nav a.active{background:#141d3b; border-color:#28345d}
-      main{padding:20px}
-      .header{
-        display:flex; gap:16px; align-items:center; flex-wrap:wrap; margin-bottom:16px
-      }
-      .filters{
-        display:flex; gap:8px; flex-wrap:wrap; margin-left:auto
-      }
-      select, .chip{
-        background:#0f1730; border:1px solid #27325a; color:var(--text); padding:8px 10px; border-radius:8px
-      }
-      .grid{
-        display:grid; grid-template-columns: repeat(12, 1fr); gap:12px
-      }
-      .card{
-        background:var(--card); border:1px solid #1f2945; border-radius:12px; padding:14px; min-height:120px; box-shadow:0 1px 0 rgba(255,255,255,0.03) inset
-      }
-      .card h3{margin:0 0 8px 0; font-size:14px; color:#cbd5e1}
-      .kpis{display:grid; grid-template-columns:repeat(4,1fr); gap:12px}
-      .kpi{background:#0f1730; border:1px solid #253059; border-radius:12px; padding:12px}
-      .kpi .val{font-size:22px; font-weight:700}
-      .kpi .delta{font-size:12px}
-      .delta.up{color:var(--good)} .delta.down{color:var(--bad)} .delta.flat{color:var(--muted)}
-      .col-3{grid-column:span 3} .col-4{grid-column:span 4} .col-5{grid-column:span 5}
-      .col-6{grid-column:span 6} .col-7{grid-column:span 7} .col-8{grid-column:span 8} .col-12{grid-column:span 12}
-
-      .table{width:100%; border-collapse: collapse; font-size:14px}
-      .table th,.table td{padding:8px 10px; border-bottom:1px solid #223055}
-      .table th{color:#cbd5e1; text-align:left}
-      .badge{padding:2px 6px; border-radius:6px; font-size:12px; border:1px solid #2a3a6a; background:#0f1730; color:#e5e7eb}
-      .heat-grid{
-        display:grid; gap:4px; grid-template-columns:repeat(8, minmax(0,1fr));
-      }
-      .cell{
-        aspect-ratio:1/1; border-radius:6px; display:flex; align-items:center; justify-content:center; font-size:11px;
-        border:1px solid #223055; background:#101a39; color:#dbeafe
-      }
-      .cell[data-val]{position:relative}
-      .cell[data-val]::after{content:""; position:absolute; inset:2px; border-radius:4px; opacity:0.85; background:linear-gradient(180deg, rgba(125,211,252,0.0), rgba(125,211,252,0.35));}
-      footer{margin-top:14px; color:var(--muted); font-size:12px}
-
-      /* Responsive */
-      @media (max-width: 1100px){
-        .app{grid-template-columns: 72px 1fr}
-        aside{padding:8px}
-        nav a span.label{display:none}
-        .kpis{grid-template-columns:repeat(2,1fr)}
-        .col-6,.col-7,.col-8{grid-column:span 12}
-      }
-      @media (max-width: 720px){
-        .grid{grid-template-columns:repeat(6,1fr)}
-        .col-4{grid-column:span 6}
-        .kpis{grid-template-columns:1fr}
-      }
-      </style>
-      </head>
-      <body>
-      <div class="app">
-        <aside>
-          <div class="logo">
-            <div class="logo-circle"></div>
-            <div>
-              <h1>MedAffairs BI</h1>
-              <div class="small">Demo analytics suite</div>
-            </div>
-          </div>
-          <nav id="nav"></nav>
-          <footer>© Demo. Sample data only.</footer>
-        </aside>
-
-        <main>
-          <div class="header">
-            <div>
-              <div style="font-weight:700" id="pageTitle">Dashboard</div>
-              <div class="small" id="pageSubtitle">Interactive demo</div>
-            </div>
-            <div class="filters">
-              <select id="filterTA"><option value="All">All TAs</option></select>
-              <select id="filterProduct"><option value="All">All products</option></select>
-              <select id="filterCountry"><option value="All">All countries</option></select>
-              <select id="filterSegment"><option value="All">All HCP segments</option></select>
-            </div>
-          </div>
-
-          <!-- DASHBOARD CONTAINER -->
-          <div id="view" class="grid"></div>
-        </main>
+<div class="app">
+  <aside>
+    <nav id="nav"></nav>
+    <div class="aside-footer">
+      <div class="built-full">
+        <span class="heart" aria-hidden="true">♥</span>
+        <span class="built-text">Built with love by Sonnil Le</span>
+        <span class="initials" aria-hidden="true">SL</span>
       </div>
+      <span class="sr-only">Built with love by Sonnil Le</span>
+    </div>
+  </aside>
 
-      <script>
-      /* ---------------------------
-         Demo Data (mock, pharma-flavored)
-      ---------------------------- */
-      const TAs = ["Oncology","Immunology","Cardio","Neuro"];
-      const Products = ["Alpha-01","Beta-Plus","Cardex","NeuroQ"];
-      const Countries = ["US","DE","FR","UK","ES","IT","BR","JP","CN","CA"];
-      const Segments = ["KOL","Specialist","GP","Nurse"];
+  <main>
+    <div id="view" class="grid"></div>
+  </main>
+</div>
 
-      function rand(n=1000){return Math.round(Math.random()*n)}
-      function randBetween(min,max){return Math.round(min + Math.random()*(max-min))}
-      function pct(){return +(Math.random()*100).toFixed(1)}
+<script>
+/* Data & helpers moved to shared.js */
 
-      const clock = (()=> {
-        const now = new Date();
-        const qs = [];
-        let year = now.getFullYear() - 3, q = 1;
-        for(let i=0;i<12;i++){
-          qs.push({label:`Q${q} ${year}`, date: new Date(year, (q-1)*3, 1)});
-          q++; if(q===5){q=1; year++;}
+/* =========================
+   Helpers / UI
+========================= */
+// Helpers and ensureChart/ensureGeoLibs now come from shared.js
+
+// kpi, card, canvas, leaderboardTable, listBlock provided by shared.js
+
+/* =========================
+   Multi-select Filters (checkboxes)
+========================= */
+// Filters and chips provided by shared.js
+
+/* =========================
+   Router
+========================= */
+const ROUTES = [
+  {id:"medical",  title:"Medical Activity Reporting",  subtitle:"Field + omnichannel activity", render: renderMedical},
+  {id:"perception",title:"Perception / NPS / KAB",     subtitle:"Awareness, attitudes, behavior", render: renderPerception},
+  {id:"events",    title:"Congresses & Events",         subtitle:"ROI and strategic value", render: renderEvents,
+    children: [
+      { id: "library", title: "Library of Congresses", subtitle: "Event web analytics (users, engagement, downloads)", render: renderLibrary },
+      { id: "library2", title: "Library of Congresses (2)", subtitle: "Event web analytics — Perception", render: renderLibrary2 }
+    ]
+  },
+  {id:"learning",  title:"Learning & Capability",       subtitle:"Readiness & skills", render: renderLearning},
+  {id:"digital",   title:"Digital & Media",             subtitle:"Digital influence & content", render: renderDigital},
+  {id:"foundational",title:"Foundational Data & Insights", subtitle:"Data health & readiness", render: renderFoundational},
+  {id:"ceo",       title:"CEO View (Executive)",        subtitle:"Predictive, ROI, compliance – board-ready", render: renderCEO},
+];
+
+// Make ROUTES available to menu.js
+window.ROUTES = ROUTES;
+
+function clearView(){ const v=$("#view"); v.innerHTML=""; return v; }
+// makeChart provided by shared.js
+
+// findRouteById provided by shared.js
+
+function route(){
+  const routeId = location.hash.replace("#/","") || ROUTES[0].id;
+  const r = findRouteById(routeId, ROUTES) || ROUTES[0];
+  r.render();
+  if (window.updateActiveNav) updateActiveNav();
+}
+
+/* =========================
+   Pages
+========================= */
+/*** 1) MEDICAL ACTIVITY ***/
+function renderMedical(){
+  const view = clearView(); buildMultiFilters();
+  const _r = ROUTES.find(x=>x.id==='medical') || ROUTES[0];
+  $("#pageTitle").textContent = _r.title;
+  $("#pageSubtitle").textContent = _r.subtitle;
+
+  const kpiWrap = el("div","kpis col-12");
+  const subset = DATA.interactions.rows.filter(passFilters);
+  const totalInteractions = subset.reduce((a,b)=>a+b.interactions,0);
+  const avgDur = (subset.reduce((a,b)=>a+b.avgCallMin,0)/Math.max(1,subset.length)).toFixed(1);
+  const avgFreq = (subset.reduce((a,b)=>a+b.freqPerHCP,0)/Math.max(1,subset.length)).toFixed(1);
+  const plan = DATA.progressByQuarter.at(-1);
+  const planDelta = Math.round((plan.actual/plan.planned-1)*100);
+
+  kpiWrap.append(
+    kpi("Total interactions", fmt(totalInteractions), planDelta),
+    kpi("Avg call duration (min)", avgDur, randBetween(-3,8)),
+    kpi("Avg call freq / HCP (qtr)", avgFreq, randBetween(-2,6)),
+    kpi("Engagement progress (vs plan)", `${fmt(plan.actual)} / ${fmt(plan.planned)}`, planDelta)
+  );
+  view.append(kpiWrap);
+
+  const mapCard = card("Global map of interaction volume by country","col-6");
+  const mapCanvas = canvas(); mapCard.append(mapCanvas); view.append(mapCard);
+
+  const channelCard = card("Channel mix (email, web, events, in-person, CLM/IVA, remote)","col-6");
+  const chCanv = canvas(); channelCard.append(chCanv); view.append(channelCard);
+
+  const tsCard = card("Engagement trends over quarters","col-8");
+  const tsCanv = canvas(); tsCard.append(tsCanv); view.append(tsCard);
+
+  const lbCard = card("Leaderboard of most active markets / MSLs","col-4");
+  lbCard.append(leaderboardTable(subset)); view.append(lbCard);
+
+  const chAgg = {}; subset.forEach(r=>{ chAgg[r.channel]=(chAgg[r.channel]||0)+r.interactions; })
+  makeChart(chCanv.getContext('2d'), { type:'bar',
+    data:{ labels:Object.keys(chAgg), datasets:[{ label:'Interactions', data:Object.values(chAgg) }]},
+    options:{ indexAxis:'y', scales:{ x:{ beginAtZero:true } }, plugins:{ legend:{display:false} } }
+  });
+
+  makeChart(tsCanv.getContext('2d'), { type:'line',
+    data:{
+      labels: DATA.progressByQuarter.map(x=>x.label),
+      datasets:[
+        {label:'Planned', data: DATA.progressByQuarter.map(x=>x.planned), borderWidth:2, tension:.25},
+        {label:'Actual', data: DATA.progressByQuarter.map(x=>x.actual), borderWidth:2, tension:.25}
+      ]
+    },
+    options:{ scales:{ y:{ beginAtZero:true } } }
+  });
+
+  // Map (choropleth) with cached fetch and lazy-loaded libs
+  const ensureGeo = ensureGeoLibs();
+  const atlasUrl = "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json";
+  const atlasPromise = window.__atlasPromise || (window.__atlasPromise = fetch(atlasUrl).then(r=>r.json()).catch(()=>null));
+  ensureGeo
+    .then(()=> atlasPromise)
+    .then(topology=>{
+      if (!topology || !window.ChartGeo) { throw new Error('no-topology'); }
+      const countries = ChartGeo.topojson.feature(topology, topology.objects.countries).features;
+      const byCountry = {}; subset.forEach(r=>{ byCountry[r.country]=(byCountry[r.country]||0)+r.interactions; });
+      const nameMap = {US:"United States of America", UK:"United Kingdom", DE:"Germany", FR:"France", ES:"Spain", IT:"Italy", BR:"Brazil", JP:"Japan", CN:"China", CA:"Canada"};
+      const values = countries.map(f=>{
+        const nm = f.properties.name;
+        const demoKey = Object.keys(nameMap).find(k=>nameMap[k]===nm);
+        return {feature:f, value: byCountry[demoKey]||0};
+      });
+      makeChart(mapCanvas.getContext('2d'), {
+        type:'choropleth',
+        data:{ labels: values.map(v=>v.feature.properties.name), datasets:[{label:'Interactions', outline: ChartGeo.topojson.mesh(topology, topology.objects.countries, (a,b)=>a!==b), data: values}]},
+        options:{ showOutline:true, showGraticule:true,
+          scales:{ projection:{ axis:'x', projection:'equalEarth' }, color:{ axis:'x', quantize:5, legend:{position:'bottom'} } }
         }
-        return {quarters: qs};
-      })();
+      });
+    })
+  .catch(()=> { mapCard.append(el('div','small','(Map unavailable offline)')); });
+}
 
-      function makeInteractions(){
-        const channels = ["F2F","Remote","CLM/IVA","Email","Web","Events"];
-        const rows = [];
-        Countries.forEach(c=>{
-          channels.forEach(ch=>{
-            rows.push({
-              country:c, channel:ch, ta:TAs[randBetween(0,TAs.length-1)],
-              product:Products[randBetween(0,Products.length-1)],
-              segment:Segments[randBetween(0,Segments.length-1)],
-              interactions: randBetween(50, 1200),
-              avgCallMin: randBetween(6,25),
-              freqPerHCP: +(Math.random()*4).toFixed(1)
-            });
-          });
+/*** 2) PERCEPTION / NPS / KAB ***/
+function renderPerception(){
+  const view = clearView(); buildMultiFilters();
+  const _r = ROUTES.find(x=>x.id==='perception') || ROUTES[0];
+  $("#pageTitle").textContent = _r.title; $("#pageSubtitle").textContent = _r.subtitle;
+
+  const rows = DATA.nps.filter(r=> matchesMulti(FILTER.ta,r.ta) && matchesMulti(FILTER.country,r.country) && matchesMulti(FILTER.segment,r.segment) && (r.business===undefined || matchesMulti(FILTER.business, r.business)) );
+  const avgNPS = Math.round(rows.reduce((a,b)=>a+b.nps,0)/Math.max(1,rows.length));
+  const avgK = Math.round(rows.reduce((a,b)=>a+b.K,0)/Math.max(1,rows.length));
+  const avgA = Math.round(rows.reduce((a,b)=>a+b.A,0)/Math.max(1,rows.length));
+  const avgB = Math.round(rows.reduce((a,b)=>a+b.B,0)/Math.max(1,rows.length));
+
+  const kpiWrap = el("div","kpis col-12");
+  kpiWrap.append(
+    kpi("NPS (avg)", avgNPS, randBetween(-5,8), npsColor(avgNPS)),
+    kpi("Knowledge score (K)", avgK+"%", randBetween(-3,6), pctColor(avgK)),
+    kpi("Attitude score (A)", avgA+"%", randBetween(-3,6), pctColor(avgA)),
+    kpi("Behavior score (B)", avgB+"%", randBetween(-3,6), pctColor(avgB)),
+  );
+  view.append(kpiWrap);
+
+  const heat = card("NPS heatmap by market × TA","col-6");
+  const grid = el("div","heat-grid");
+  Countries.forEach(c=>{
+    TAs.forEach(ta=>{
+      const vals = rows.filter(r=>r.country===c && r.ta===ta).map(r=>r.nps);
+      const v = vals.length? Math.round(vals.reduce((a,b)=>a+b,0)/vals.length): 0;
+      const cell = el('div','cell', `<div class="small">${c}-${ta.split(' ')[0]}</div>`);
+      cell.style.background = heatColor((v+20)/1.2,0,100); cell.style.borderColor="#1f2e55";
+      const tag = el('div','small', `<span class="badge">NPS ${v}</span>`); tag.style.position="absolute"; tag.style.bottom="4px";
+      cell.append(tag); grid.append(cell);
+    });
+  });
+  heat.append(grid); view.append(heat);
+
+  const kabCard = card("Pre vs Post engagement KAB","col-6");
+  const kabCanvas = canvas(); kabCard.append(kabCanvas); view.append(kabCard);
+  makeChart(kabCanvas.getContext('2d'), {
+    type:'bar',
+    data:{ labels:["Knowledge","Attitude","Behavior"],
+      datasets:[ {label:"Pre", data:[avgK-8, avgA-6, avgB-5]}, {label:"Post", data:[avgK, avgA, avgB]} ] },
+    options:{ scales:{ y:{ beginAtZero:true, max:100 } } }
+  });
+
+  const ts = card("NPS trend over quarters","col-8");
+  const tsCanvas = canvas(110); ts.append(tsCanvas); view.append(ts);
+  const trend = DATA.progressByQuarter.map((q,i)=> avgNPS + Math.round(Math.sin(i/2)*6) );
+  makeChart(tsCanvas.getContext('2d'), {
+    type:'line',
+    data:{ labels: DATA.progressByQuarter.map(x=>x.label), datasets:[{label:'NPS', data:trend, borderWidth:2, tension:.25}]},
+    options:{ scales:{ y:{ suggestedMin:-40, suggestedMax:80 } } }
+  });
+
+  const dd = card("Drivers & detractors (survey text analytics)","col-4");
+  // make this card 50% shorter via compact padding and scroll if needed
+  dd.style.padding = '8px';
+  dd.style.minHeight = '0px';
+  dd.append(listBlock("Top drivers", ["Timely scientific updates","Quality of MSL interaction","Relevant CLM content","Rapid medical info response","Clear MOA explanation"]));
+  dd.append(listBlock("Top detractors", ["Infrequent follow‑up","Scheduling friction","Overly generic content","Limited local data"]));
+  dd.style.maxHeight = '';
+  dd.style.overflow = 'auto';
+  view.append(dd);
+  // Match the height of the NPS trend card for visual alignment
+  requestAnimationFrame(()=>{
+    const h = ts && ts.offsetHeight ? ts.offsetHeight : 0;
+    if (h) dd.style.height = h + 'px';
+  });
+}
+
+/*** 2a) PERCEPTION — LIBRARY OF CONGRESSES (2) ***/
+function renderLibrary2(){
+  const view = clearView(); buildMultiFilters();
+  // Page title
+  const meta = findRouteById('library2', ROUTES) || {title:'Library of Congresses (2)', subtitle:''};
+  $("#pageTitle").textContent = meta.title;
+  $("#pageSubtitle").textContent = meta.subtitle || 'Event web analytics (users, engagement, downloads)';
+
+  // State (cached across navigations)
+  const state = window.__LIB2 || (window.__LIB2 = { 
+    filters:{ congress:new Set(), ta:new Set(), product:new Set(), country:new Set(), business:new Set(), dates:{ start:null, end:null } }, 
+  selectedCountries: new Set(),
+  data:null,
+    built:false,
+    filtersCard:null,
+    filterRow:null,
+    chipsHost:null,
+    contentEl:null
+  });
+
+  // Preserve page scroll position across re-renders
+  function preservePageScroll(doWork){
+    try{
+      const y = window.scrollY;
+      doWork();
+      // Double RAF to stabilize layout before restoring
+      requestAnimationFrame(()=>{
+        window.scrollTo(0, y);
+        requestAnimationFrame(()=>{ window.scrollTo(0, y); });
+      });
+    }catch{ doWork(); }
+  }
+
+  // Data model (mock) build once
+  if (!state.data){
+  const items = [];
+    const pagesPerEvent = 8;
+    const periods = DATA.progressByQuarter.map(q=>q.label);
+  DATA.events.forEach(e=>{
+      for(let i=0;i<pagesPerEvent;i++){
+  const ta = TAs[randBetween(0,TAs.length-1)];
+  const product = Products[randBetween(0,Products.length-1)];
+  const country = Countries[randBetween(0,Countries.length-1)];
+  const businessUnits = ['Specialty Care','GenMed','Vaccines'];
+  const business = businessUnits[randBetween(0,businessUnits.length-1)];
+        const uniqueUsers = randBetween(50, 5000);
+        const engagedSessions = Math.max(20, Math.round(uniqueUsers * (0.4 + Math.random()*0.5)));
+        const pageViews = engagedSessions + randBetween(engagedSessions, engagedSessions*3);
+        const firstVisits = Math.round(uniqueUsers * (0.25 + Math.random()*0.35));
+        const fileDownloads = Math.round(engagedSessions * (0.05 + Math.random()*0.25));
+        const avgEngTimeSec = randBetween(60, 480);
+        const bounceRate = randBetween(20, 65);
+        const period = periods[randBetween(0, periods.length-1)];
+        const q = DATA.progressByQuarter.find(x=> x.label === period);
+        const date = q ? q.date : new Date();
+        const kind = Math.random() < 0.6 ? 'Publication' : 'Poster';
+        const contentTitle = `${kind} ${e.name} ${2020+randBetween(0,5)} – ${['Efficacy','Safety','Real‑World','MOA','Subgroup'][randBetween(0,4)]}`;
+        const url = `https://example.com/${kind.toLowerCase()}/${encodeURIComponent(e.name)}-${i+1}`;
+        items.push({
+          congress:e.name, ta, product, country, business, period, date,
+          kind, contentTitle, url,
+          uniqueUsers, engagedSessions, pageViews, firstVisits, fileDownloads,
+          avgEngTimeSec, bounceRate,
+          viewsPerSession: +(pageViews/Math.max(1,engagedSessions)).toFixed(2)
         });
-        return {channels, rows};
       }
+    });
+    state.data = items;
+  }
 
-      function makeEvents(){
-        const events = ["ASCO","ESMO","AHA","EAN","EULAR","ASH","ERS","ESICM","WCN"];
-        const rows = events.map(name=>({
-          name,
-          attendees: randBetween(500, 12000),
-          boothTimeMin: randBetween(2000, 20000),
-          surveyRelevance: randBetween(60,95),
-          insights: randBetween(10,120),
-          followupsDonePct: randBetween(40,95)
-        }));
-        return rows;
+  // Page-specific filters (Congress, TA, Product, Dates) — render in body, not header
+  const filtersCard = card('', 'col-12');
+  filtersCard.classList.add('filters-card','collapsed');
+  // Remove card visuals (no header, no background)
+  filtersCard.classList.remove('card');
+  const _fTitle = filtersCard.querySelector('h3'); if (_fTitle) _fTitle.remove();
+  filtersCard.style.padding = '0';
+  // Toggle button above the filters row
+  const toggle = document.createElement('button');
+  toggle.className = 'filters-toggle'; toggle.type = 'button';
+  toggle.setAttribute('aria-controls','lib2FiltersRow'); toggle.setAttribute('aria-expanded','false'); toggle.title='Show filters';
+  toggle.innerHTML = `
+    <span class="icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M2 5h20v2L14 14v5l-4 2v-7L2 7V5z"></path></svg>
+    </span>
+    <span>Onpage Filters</span>
+    <span class="pm" aria-hidden="true">+</span>`;
+  const filterRow = el('div','filters-row');
+  filterRow.id = 'lib2FiltersRow';
+  buildLib2Filters(state, filterRow);
+  // Breadcrumb chips under the filters
+  const chipsHost = el('div','active-filters');
+  chipsHost.style.marginTop = '6px';
+  // Inline wrap: make toggle appear on the same row as the filter options
+  const filtersWrap = el('div','filters');
+  filtersWrap.append(toggle, filterRow);
+  filtersCard.append(filtersWrap, chipsHost);
+  view.append(filtersCard);
+  // Save references for update calls
+  state.filtersCard = filtersCard; state.filterRow = filterRow; state.chipsHost = chipsHost;
+  renderLib2Chips(state, chipsHost, filtersCard);
+  // Content holder (charts, tables, KPIs) — isolated grid container
+  const content = el('div','grid col-12'); content.id = 'lib2Content'; view.append(content); state.contentEl = content;
+
+  // Toggle behavior (default collapsed)
+  const setTState = ()=>{
+    const expanded = !filtersCard.classList.contains('collapsed');
+    toggle.setAttribute('aria-expanded', String(expanded));
+    const pm = toggle.querySelector('.pm'); if (pm) pm.textContent = expanded? '−':'+';
+    toggle.title = expanded? 'Hide filters':'Show filters';
+  };
+  setTState();
+  toggle.addEventListener('click', ()=>{ 
+    filtersCard.classList.toggle('collapsed'); 
+    setTState(); 
+    // When collapsing, close all open dropdowns inside this card
+    const isCollapsed = filtersCard.classList.contains('collapsed');
+    if (isCollapsed) {
+      filterRow.querySelectorAll('details[open]').forEach(d=> d.removeAttribute('open'));
+    }
+  });
+  
+  // Compute and show total selections on the Library (2) on-page Filters toggle
+  function setLib2FiltersCount(){
+    try{
+  const countryUnion = new Set([...(state.filters.country||new Set()), ...(state.selectedCountries||new Set())]);
+  const total = (state.filters.congress?.size||0)
+    + (state.filters.ta?.size||0)
+    + (state.filters.product?.size||0)
+    + (state.filters.business?.size||0)
+    + (countryUnion.size||0)
+    + ((state.filters.dates && (state.filters.dates.start || state.filters.dates.end)) ? 1 : 0);
+      let badge = toggle.querySelector('.sel-count');
+      if (!badge){
+        badge = document.createElement('span');
+        badge.className = 'badge sel-count';
+        const pm = toggle.querySelector('.pm');
+        toggle.insertBefore(badge, pm || null);
       }
-
-      const DATA = {
-        interactions: makeInteractions(),
-        events: makeEvents(),
-        progressByQuarter: clock.quarters.map((q,i)=>({date:q.date, label:q.label, planned: randBetween(5000,12000), actual: randBetween(4200,11500)}))
+      if (total > 0){
+        badge.textContent = String(total);
+        badge.style.display = 'inline-flex';
+      } else {
+        badge.textContent = '';
+        badge.style.display = 'none';
       }
+      // Update floating Filters button badge
+      try{
+        const fBadge = document.getElementById('floatFiltersBadge');
+        if (fBadge){
+          if (total > 0){ fBadge.textContent = String(total); fBadge.style.display = 'inline-flex'; }
+          else { fBadge.textContent = ''; fBadge.style.display = 'none'; }
+        }
+      }catch{}
+    }catch{}
+  }
+  setLib2FiltersCount();
 
-      /* ---------------------------
-         Helpers (DOM, charts, filters)
-      ---------------------------- */
-      const $ = (sel, root=document)=>root.querySelector(sel);
-      function el(tag, cls, html){ const n=document.createElement(tag); if(cls) n.className=cls; if(html!==undefined) n.innerHTML=html; return n; }
-      function fmt(n){ return n.toLocaleString() }
-
-      function makeChart(ctx, cfg){ if(ctx._chart){ ctx._chart.destroy(); } const c = new Chart(ctx, cfg); ctx._chart = c; return c; }
-
-      function selectOptions(sel, arr){ sel.innerHTML = `<option value="All">All</option>` + arr.map(x=>`<option>${x}</option>`).join(""); }
-
-      selectOptions($("#filterTA"), TAs);
-      selectOptions($("#filterProduct"), Products);
-      selectOptions($("#filterCountry"), Countries);
-      selectOptions($("#filterSegment"), Segments);
-
-      const FILTER = { ta:"All", product:"All", country:"All", segment:"All" };
-      for(const [id,key] of [["filterTA","ta"],["filterProduct","product"],["filterCountry","country"],["filterSegment","segment"]]){
-        $("#"+id).addEventListener("change", e=>{ FILTER[key]=e.target.value; route(); });
-      }
-      function passFilters(row){
-        return (FILTER.ta==="All"||row.ta===FILTER.ta)
-          && (FILTER.product==="All"||row.product===FILTER.product)
-          && (FILTER.country==="All"||row.country===FILTER.country)
-          && (FILTER.segment==="All"||row.segment===FILTER.segment);
-      }
-
-      /* ---------------------------
-         Core routes
-      ---------------------------- */
-      const ROUTES = [
-        {id:"medical",  title:"1) Medical Activity Reporting",  subtitle:"Field + omnichannel activity", render: renderMedical},
-        {id:"perception",title:"2) Perception / NPS / KAB",     subtitle:"Awareness, attitudes, behavior", render: renderPerception},
-        {id:"events",    title:"3) Congresses & Events",         subtitle:"ROI and strategic value", render: renderEvents},
-        {id:"learning",  title:"4) Learning & Capability",       subtitle:"Readiness & skills", render: renderLearning},
-        {id:"digital",   title:"5) Digital & Media",             subtitle:"Digital influence & content", render: renderDigital},
-        {id:"foundational",title:"6) Foundational Data & Insights", subtitle:"Data health & readiness", render: renderFoundational},
+  // Helper to clear all Library (2) filters in one place
+  function clearLib2All(){
+    try{
+      // Clear set-based filters
+      state.filters.congress.clear();
+      state.filters.ta.clear();
+      state.filters.product.clear();
+  state.filters.country.clear();
+  state.filters.business.clear();
+      // Clear map selection and drill-through state
+      if (state.selectedCountries && state.selectedCountries.clear) state.selectedCountries.clear();
+      state.lastSelectedCountry = null; state.__openDrillForCountry = null;
+      // Clear date range
+      state.filters.dates.start = null; state.filters.dates.end = null;
+      // Uncheck all checkboxes in the main filters card
+      filtersCard.querySelectorAll('.chklist input[type="checkbox"]').forEach(c=> c.checked=false);
+      // Reset date inputs
+      filtersCard.querySelectorAll('input[type="date"]').forEach(inp=> inp.value='');
+      // Refresh summaries
+      const pairs = [
+        {label:'Congress', key:'congress'},
+        {label:'TA', key:'ta'},
+        {label:'Product', key:'product'},
+        {label:'Country', key:'country'},
+        {label:'Business Unit', key:'business'},
+        {label:'Dates', key:'dates'}
       ];
+      pairs.forEach(({label,key})=>{
+        const details = filtersCard.querySelector(`.filter[data-key="${key}"] details`);
+        if (details){
+          const sum = details.querySelector('summary');
+          const span = sum && sum.querySelector('.small');
+          if (span) updateLib2Summary(label, span, sum, state.filters[key]);
+        }
+      });
+      renderLib2Chips(state, state.chipsHost, state.filtersCard);
+      updateLib2Content();
+      try{ setLib2FiltersCount(); }catch{}
+    }catch{}
+  }
 
-      function setupNav(){
-        const nav = $("#nav"); nav.innerHTML=''; ROUTES.forEach(r=>{ const a = el("a","",`<span class="dot" style="width:8px;height:8px;border-radius:50%;background:var(--accent)"></span><span class="label">${r.title}</span>`); a.href = `#/${r.id}`; nav.appendChild(a); }); updateActiveNav();
+  // Floating controls to access filters and clear at any point
+  const floatCtl = document.createElement('div');
+  floatCtl.style.position = 'fixed'; floatCtl.style.right='16px'; floatCtl.style.bottom='20px'; floatCtl.style.display='flex'; floatCtl.style.flexDirection='column'; floatCtl.style.gap='8px'; floatCtl.style.zIndex='900';
+  floatCtl.style.transition = 'opacity .2s ease, transform .2s ease';
+  // Start hidden; will show when on-page filters scroll out of view
+  floatCtl.style.opacity = '0';
+  floatCtl.style.pointerEvents = 'none';
+  const btnFloatFilters = document.createElement('button'); btnFloatFilters.textContent = 'Onpage Filters'; btnFloatFilters.className='btn';
+  // Light purple to match logo
+  btnFloatFilters.style.background='var(--accent-2)';
+  btnFloatFilters.style.color='#111827';
+  btnFloatFilters.style.border='1px solid #8b5cf6';
+  btnFloatFilters.style.borderRadius='999px'; btnFloatFilters.style.padding='8px 14px'; btnFloatFilters.style.boxShadow='0 2px 8px rgba(0,0,0,0.25)';
+  btnFloatFilters.style.position='relative';
+  const floatBadge = document.createElement('span'); floatBadge.id='floatFiltersBadge'; floatBadge.className='badge';
+  floatBadge.style.position='absolute'; floatBadge.style.top='-6px'; floatBadge.style.right='-6px'; floatBadge.style.display='none';
+  btnFloatFilters.appendChild(floatBadge);
+  floatCtl.append(btnFloatFilters);
+  view.append(floatCtl);
+
+  // Responsive layout for floating controls and footer avoidance
+  function adjustFloatBottom(){
+    try{
+      const doc = document.documentElement;
+      const atBottom = (window.scrollY + window.innerHeight) > (doc.scrollHeight - 120);
+      floatCtl.style.bottom = atBottom ? '100px' : '20px';
+    }catch{}
+  }
+  function updateFloatCtlLayout(){
+    try{
+      const w = window.innerWidth || 1024;
+      if (w <= 640){
+        btnFloatFilters.style.padding = '10px 12px';
+        btnFloatFilters.style.borderRadius = '999px';
+      } else {
+        btnFloatFilters.style.padding = '8px 14px';
       }
-      function updateActiveNav(){ const hash = location.hash.replace("#/",""); [...$("#nav").children].forEach(a=> a.classList.toggle('active', a.getAttribute('href')==('#/'+hash))); }
+      adjustFloatBottom();
+    }catch{}
+  }
+  window.addEventListener('resize', updateFloatCtlLayout);
+  window.addEventListener('scroll', adjustFloatBottom, { passive:true });
+  updateFloatCtlLayout();
 
-      function clearView(){ const v=$("#view"); v.innerHTML=''; return v; }
+  // Show floating button only when on-page filters are not visible in viewport
+  function setFloatVisible(show){
+    if (show){
+      floatCtl.style.opacity = '1';
+      floatCtl.style.pointerEvents = 'auto';
+      floatCtl.style.transform = 'translateY(0)';
+    } else {
+      floatCtl.style.opacity = '0';
+      floatCtl.style.pointerEvents = 'none';
+      floatCtl.style.transform = 'translateY(6px)';
+    }
+  }
+  try{
+    const io = new IntersectionObserver((entries)=>{
+      const visible = entries && entries.some(e=> e.isIntersecting);
+      // If on-page filters are visible, hide floating; otherwise show it
+      setFloatVisible(!visible);
+    }, { root:null, rootMargin: '-72px 0px 0px 0px', threshold: 0 });
+    io.observe(filtersCard);
+    // Also set initial state synchronously to avoid flash
+    const rect = filtersCard.getBoundingClientRect();
+    const inView = rect.bottom > 0 && rect.top < (window.innerHeight || 0);
+    setFloatVisible(!inView);
+  }catch{}
 
-      /* --- route implementations (simplified, but functional) --- */
-      function renderMedical(){ const view = clearView(); $("#pageTitle").textContent = ROUTES[0].title; $("#pageSubtitle").textContent = ROUTES[0].subtitle; const subset = DATA.interactions.rows.filter(passFilters); const total = subset.reduce((a,b)=>a+b.interactions,0); const kpiWrap = el('div','kpis col-12'); kpiWrap.append(kpi('Total interactions', fmt(total), 0)); view.append(kpiWrap); const mapCard = card('Global interactions by country','col-6'); const mapCv = canvas(); mapCard.append(mapCv); view.append(mapCard); const chCard = card('Channel mix','col-6'); const chCv = canvas(); chCard.append(chCv); view.append(chCard); const agg = {}; subset.forEach(r=> agg[r.channel]=(agg[r.channel]||0)+r.interactions); makeChart(chCv.getContext('2d'),{type:'doughnut', data:{labels:Object.keys(agg), datasets:[{data:Object.values(agg)}]}}); fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json').then(r=>r.json()).then(top=>{ const countries = ChartGeo.topojson.feature(top, top.objects.countries).features; const byC={}; subset.forEach(r=> byC[r.country]=(byC[r.country]||0)+r.interactions); const values = countries.map(f=>({feature:f, value: byC[f.properties.iso_a2]||0})); makeChart(mapCv.getContext('2d'), { type:'choropleth', data:{ labels:values.map(v=>v.feature.properties.name), datasets:[{ label:'Interactions', outline: ChartGeo.topojson.mesh(top, top.objects.countries, (a,b)=>a!==b), data: values }] }, options:{ showOutline:true, showGraticule:true, scales:{ projection:{ axis:'x', projection:'equalEarth' }, color:{ axis:'x', quantize:5 } } } }); }).catch(()=> mapCard.append(el('div','small','(Map unavailable)')));
+  // Open a floating overlay with the in-page filters
+  btnFloatFilters.addEventListener('click', (e)=>{
+    e.preventDefault();
+    // Backdrop
+  const ov = document.createElement('div');
+  ov.style.position='fixed'; ov.style.inset='0'; ov.style.background='rgba(0,0,0,0.7)'; ov.style.zIndex='950';
+    // Panel
+  const panel = document.createElement('div');
+  panel.style.position='absolute';
+  // Center and enlarge so options fit without panel scrolling; no mobile special case needed
+  panel.style.left='50%';
+  panel.style.top='50%';
+  panel.style.transform='translate(-50%, -50%)';
+  panel.style.width='min(820px, 94vw)';
+  panel.style.maxWidth='94vw';
+  panel.style.maxHeight='90vh';
+  panel.style.overflow='visible';
+  panel.style.background='#111827'; panel.style.color='#e5e7eb'; panel.style.border='1px solid #374151'; panel.style.borderRadius='12px'; panel.style.boxShadow='0 16px 48px rgba(0,0,0,0.45)';
+    const ph = document.createElement('div'); ph.style.display='flex'; ph.style.justifyContent='space-between'; ph.style.alignItems='center'; ph.style.gap='8px'; ph.style.padding='8px 12px'; ph.style.borderBottom='1px solid #374151'; ph.style.background='#111827';
+  const h = document.createElement('div'); h.textContent='Onpage Filters'; h.style.fontWeight='600'; h.style.color='#e5e7eb';
+    const x = document.createElement('button'); x.textContent='×'; x.setAttribute('aria-label','Close'); x.style.fontSize='1.2em'; x.style.lineHeight='1'; x.style.padding='4px 8px'; x.style.border='1px solid #4b5563'; x.style.borderRadius='6px'; x.style.background='#374151'; x.style.color='#e5e7eb';
+    x.addEventListener('mouseenter', ()=>{ x.style.background='#4b5563'; }); x.addEventListener('mouseleave', ()=>{ x.style.background='#374151'; });
+    ph.append(h,x);
+    const pc = document.createElement('div'); pc.style.padding='8px 12px'; pc.style.fontSize='0.95em'; pc.style.background='#111827'; pc.style.color='#e5e7eb';
+    // Build a fresh copy of the filters inside the panel
+    const innerRow = document.createElement('div'); innerRow.className='filters-row';
+  // Keep all filters on a single top row (no wrap)
+  innerRow.style.display = 'flex';
+  innerRow.style.flexWrap = 'nowrap';
+  innerRow.style.gap = '10px';
+  innerRow.style.alignItems = 'flex-start';
+    buildLib2Filters(state, innerRow);
+    // Clamp popover widths to viewport; filters stay in a single row
+    const setCols = ()=>{
+      const w = window.innerWidth || 1024;
+      const maxPop = Math.min(520, Math.floor((w * 0.94) - 48));
+      innerRow.querySelectorAll('.pop').forEach(p=>{
+        const maxW = Math.max(280, maxPop);
+        const minW = Math.min(320, maxW);
+        p.style.maxWidth = maxW + 'px';
+        p.style.minWidth = minW + 'px';
+      });
+    };
+    setCols();
+    window.addEventListener('resize', setCols);
+    // Dark theme tweaks for the inline filters
+    try{
+      innerRow.style.color = '#e5e7eb';
+      innerRow.querySelectorAll('summary').forEach(s=>{ s.style.background='#1f2937'; s.style.color='#e5e7eb'; s.style.border='1px solid #374151'; s.style.borderRadius='6px'; s.style.padding='6px 8px'; });
+  innerRow.querySelectorAll('.pop').forEach(p=>{ p.style.background='#111827'; p.style.border='1px solid #374151'; p.style.color='#e5e7eb'; p.style.maxHeight='none'; p.style.overflow='visible'; p.style.position='static'; p.style.top='auto'; p.style.left='auto'; p.style.boxShadow='none'; p.style.marginTop='6px'; });
+      innerRow.querySelectorAll('input[type="search"], input[type="text"], input[type="date"]').forEach(inp=>{ inp.style.background='#1f2937'; inp.style.color='#e5e7eb'; inp.style.border='1px solid #4b5563'; });
+      innerRow.querySelectorAll('button').forEach(b=>{ if (!b.classList.contains('x')){ b.style.background='#374151'; b.style.color='#e5e7eb'; b.style.border='1px solid #4b5563'; } });
+      innerRow.querySelectorAll('label, .small').forEach(el=>{ el.style.color='#d1d5db'; });
+    }catch{}
+  // Add filters first, then chips (breadcrumbs) below the filters, then Clear all
+  const panelChips = document.createElement('div');
+  panelChips.className='active-filters';
+  panelChips.style.margin = '8px 0 8px 0';
+  panelChips.style.color = '#e5e7eb';
+  // Remember overlay chips host so updates reflect here too
+  state.__panelChipsHost = panelChips;
+  // Also store a reference to the overlay inner filters grid so we can sync controls after Clear all
+  state.__panelInnerRow = innerRow;
+  renderLib2Chips(state, panelChips, filtersCard);
+  pc.append(innerRow, panelChips);
+  panel.append(ph, pc); ov.appendChild(panel);
+    document.body.appendChild(ov);
+  const close = ()=> { try{ window.removeEventListener('resize', setCols); }catch{} try{ state.__panelChipsHost = null; state.__panelInnerRow = null; }catch{} ov.remove(); };
+    ov.addEventListener('click', (ev)=>{ if (ev.target===ov) close(); }); x.addEventListener('click', (ev)=>{ ev.preventDefault(); close(); });
+    window.addEventListener('keydown', function escH(ev){ if (ev.key==='Escape'){ close(); window.removeEventListener('keydown', escH); } });
+  });
+  // (Removed floating Clear all — use Clear all inside the Filters panel)
+
+  // Ensure only one dropdown open, and keep popovers within viewport
+  filterRow.querySelectorAll('.filter details').forEach(d=>{
+  d.addEventListener('toggle', ()=>{
+      if (d.open){
+        // Auto-close siblings when opening one
+        filterRow.querySelectorAll('.filter details').forEach(o=>{ if(o!==d) o.removeAttribute('open'); });
+        requestAnimationFrame(()=>{
+          const rect = d.getBoundingClientRect();
+          const pop = d.querySelector('.pop');
+          if (pop){
+      // In enlarged modal, force dropdowns to open downward and be wide enough
+      d.parentElement.classList.remove('drop-up');
+      pop.style.minWidth = '360px';
+      pop.style.maxWidth = '600px';
+      pop.style.whiteSpace = 'normal';
+      const popW = Math.max(360, pop.offsetWidth||0);
+      const wouldOverflowRight = (rect.left + popW) > (window.innerWidth - 24);
+      if (wouldOverflowRight) d.parentElement.classList.add('align-right'); else d.parentElement.classList.remove('align-right');
+          }
+        });
+      } else {
+        d.parentElement.classList.remove('drop-up');
+        d.parentElement.classList.remove('align-right');
       }
+    });
+  });
 
-      function renderPerception(){ const view = clearView(); $("#pageTitle").textContent = ROUTES[1].title; $("#pageSubtitle").textContent = ROUTES[1].subtitle; view.append(el('div','card col-12','<h3>Perception / NPS</h3><div class="small">Demo content</div>')); }
-      function renderEvents(){ const view = clearView(); $("#pageTitle").textContent = ROUTES[2].title; $("#pageSubtitle").textContent = ROUTES[2].subtitle; const rows = DATA.events; const kpiWrap = el('div','kpis col-12'); kpiWrap.append(kpi('# Attendees (sum)', fmt(rows.reduce((a,b)=>a+b.attendees,0)))); view.append(kpiWrap); const tbl = card('Event scorecard','col-12'); const t = el('table','table'); t.innerHTML = `<thead><tr><th>Event</th><th>Attendees</th><th>Insights</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${r.name}</td><td>${fmt(r.attendees)}</td><td>${r.insights}</td></tr>`).join('')}</tbody>`; tbl.append(t); view.append(tbl); }
-      function renderLearning(){ const view = clearView(); $("#pageTitle").textContent = ROUTES[3].title; $("#pageSubtitle").textContent = ROUTES[3].subtitle; view.append(el('div','card col-12','<h3>Learning</h3><div class="small">Demo content</div>')); }
-      function renderDigital(){ const view = clearView(); $("#pageTitle").textContent = ROUTES[4].title; $("#pageSubtitle").textContent = ROUTES[4].subtitle; view.append(el('div','card col-12','<h3>Digital</h3><div class="small">Demo content</div>')); }
-      function renderFoundational(){ const view = clearView(); $("#pageTitle").textContent = ROUTES[5].title; $("#pageSubtitle").textContent = ROUTES[5].subtitle; view.append(el('div','card col-12','<h3>Foundational</h3><div class="small">Demo content</div>')); }
+  // Updater to render content based on current selections without rebuilding filters
+  function updateLib2Content(){
+    if (!state.contentEl) return;
+    state.contentEl.innerHTML = '';
+    const pass = (r)=> {
+      if (state.filters.congress.size && !state.filters.congress.has(r.congress)) return false;
+      if (state.filters.ta.size && !state.filters.ta.has(r.ta)) return false;
+  if (state.filters.product.size && !state.filters.product.has(r.product)) return false;
+  // Country filter: AND across both sources (map selections and checkbox filter)
+      // Country: union of dropdown Country filter and map selections
+      const hasCountryFilter = (state.filters.country && state.filters.country.size) || (state.selectedCountries && state.selectedCountries.size);
+      if (hasCountryFilter){
+        const union = new Set([...(state.filters.country||new Set()), ...(state.selectedCountries||new Set())]);
+        if (!union.has(r.country)) return false;
+      }
+  // Business Unit (local) and also honor global business filter if set
+  if (state.filters.business.size && !state.filters.business.has(r.business)) return false;
+      // if business filter exists at header, honor it
+      if (FILTER && FILTER.business && FILTER.business.size && !FILTER.business.has(r.business)) return false;
+      // Date range filter
+      const ds = state.filters.dates.start ? new Date(state.filters.dates.start) : null;
+      const de = state.filters.dates.end ? new Date(state.filters.dates.end) : null;
+      if (ds || de){
+        let start = ds, end = de;
+        if (start && end && start.getTime() > end.getTime()){ const tmp = start; start = end; end = tmp; }
+        const t = r.date instanceof Date ? r.date.getTime() : new Date(r.date).getTime();
+        if (start && t < start.getTime()) return false;
+        if (end && t > end.getTime()) return false;
+      }
+      return true;
+    };
+    const rows = state.data.filter(pass);
+    
+    // KPIs
+  // use shared mmss from shared.js
+    const kpiWrap = el('div','kpis col-12');
+    const sum = (k)=> rows.reduce((a,b)=>a+b[k],0);
+    const avg = (k)=> rows.length ? Math.round(rows.reduce((a,b)=>a+b[k],0)/rows.length) : 0;
+    kpiWrap.append(
+      kpi('Unique Users', fmt(sum('uniqueUsers')), randBetween(-6,10)),
+      kpi('Avg. Engagement Time / Session', mmss(avg('avgEngTimeSec')), randBetween(-4,6)),
+      kpi('Bounce Rate', avg('bounceRate')+'%', randBetween(-3,5), pctColor(100-avg('bounceRate'))),
+      kpi('Engaged Sessions', fmt(sum('engagedSessions')), randBetween(-6,10)),
+      kpi('Page Views', fmt(sum('pageViews')), randBetween(-6,10)),
+      kpi('First Visits', fmt(sum('firstVisits')), randBetween(-6,10)),
+      kpi('File Downloads', fmt(sum('fileDownloads')), randBetween(-6,10))
+    );
+    state.contentEl.append(kpiWrap);
 
-      /* UI primitives */
-      function kpi(title, value, delta=0){ const d = el('div','kpi'); d.innerHTML = `<div class="small">${title}</div><div class="val">${value}</div><div class="delta ${delta>0?'up':(delta<0?'down':'flat')}">${delta>0?'▲':(delta<0?'▼':'•')} ${Math.abs(delta)}%</div>`; return d; }
-      function card(title, cls){ const c = el('div',`card ${cls||''}`); c.append(el('h3','',title)); return c; }
-      function canvas(h=220){ const c = document.createElement('canvas'); c.height = h; return c; }
+    // Visuals row 1
+    const topPages = card('Top Pages Viewed by Congress','col-6');
+    const topCv = canvas(160); topPages.append(topCv); state.contentEl.append(topPages);
+    const top = [...rows].sort((a,b)=>b.pageViews-a.pageViews).slice(0,10);
+    makeChart(topCv.getContext('2d'), {
+      type:'bar',
+      data:{ labels: top.map(r=>`[${r.congress}] ${r.contentTitle}`), datasets:[{ label:'Page Views', data: top.map(r=>r.pageViews) }]},
+      options:{ indexAxis:'y', scales:{ x:{ beginAtZero:true } }, plugins:{ legend:{display:false} } }
+    });
 
-      /* Router */
-      function route(){ const routeId = location.hash.replace('#/','') || ROUTES[0].id; const r = ROUTES.find(x=>x.id===routeId)||ROUTES[0]; try{ const res = r.render(); if(res && typeof res.then==='function'){ res.catch(()=>{}) } }catch(e){} updateActiveNav(); }
-      window.addEventListener('hashchange', route);
-      setupNav(); route();
-      </script>
-      </body>
-      </html>
+    const usersByTA = card('Active Users by TA','col-6');
+    const taCv = canvas(160); usersByTA.append(taCv); state.contentEl.append(usersByTA);
+    const byTA = {}; rows.forEach(r=>{ byTA[r.ta]=(byTA[r.ta]||0)+r.uniqueUsers; });
+    makeChart(taCv.getContext('2d'), {
+      type:'bar',
+      data:{ labels:Object.keys(byTA), datasets:[{ label:'Active Users', data:Object.values(byTA) }]},
+      options:{ scales:{ y:{ beginAtZero:true } } }
+    });
+
+  // Map view of Active Users by country (filtered)
+  const mapCard = card('Map view of Active Users by country (filtered)','col-12');
+  mapCard.id = 'map-visual';
+    // Add a simple toggle to show/hide Congress bubbles overlay
+    const bubblesToggle = document.createElement('button');
+    bubblesToggle.className = 'btn secondary';
+    bubblesToggle.type = 'button';
+    bubblesToggle.style.float = 'right';
+    state.__bubblesOn = (state.__bubblesOn === undefined) ? true : !!state.__bubblesOn;
+    const setBubTxt = ()=> bubblesToggle.textContent = state.__bubblesOn ? 'Hide Congress bubbles' : 'Show Congress bubbles';
+    setBubTxt();
+    const resetSel = document.createElement('button');
+    resetSel.className = 'btn secondary';
+    resetSel.type = 'button';
+    resetSel.style.float = 'right';
+    resetSel.style.marginRight = '8px';
+    resetSel.textContent = 'Reset map selection';
+    resetSel.addEventListener('click', ()=>{
+      state.selectedCountries.clear();
+      renderLib2Chips(state, state.chipsHost, state.filtersCard);
+      updateLib2Content();
+      try{ setLib2FiltersCount(); }catch{}
+    });
+    bubblesToggle.addEventListener('click', ()=>{
+      state.__bubblesOn = !state.__bubblesOn; setBubTxt();
+      if (bubbleCanvas) bubbleCanvas.style.display = state.__bubblesOn ? '' : 'none';
+    });
+  // Insert buttons next to the title (bubbles toggle and reset)
+  const h3 = mapCard.querySelector('h3'); if (h3) { h3.appendChild(bubblesToggle); h3.appendChild(resetSel); h3.style.position='relative'; }
+    // Wrap canvases so we can overlay bubble layer
+    const mapWrap = document.createElement('div');
+    mapWrap.style.position = 'relative';
+    mapWrap.style.width = '100%';
+    const mapCv = canvas(200);
+  const bubbleCanvas = canvas(200);
+  bubbleCanvas.style.position = 'absolute';
+  bubbleCanvas.style.left = '0';
+  bubbleCanvas.style.top = '0';
+  bubbleCanvas.style.width = '100%';
+  bubbleCanvas.style.background = 'transparent';
+  // Let base map receive events unless we detect a bubble under cursor
+  bubbleCanvas.style.pointerEvents = 'none';
+    mapWrap.append(mapCv, bubbleCanvas);
+    mapCard.append(mapWrap);
+    state.contentEl.append(mapCard);
+    const ensureGeo = ensureGeoLibs();
+    const atlasUrl = 'https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json';
+    const atlasPromise = window.__atlasPromise || (window.__atlasPromise = fetch(atlasUrl).then(r=>r.json()).catch(()=>null));
+    ensureGeo.then(()=> atlasPromise).then(topology=>{
+      if (!topology || !window.ChartGeo) { throw new Error('no-topology'); }
+      const countries = ChartGeo.topojson.feature(topology, topology.objects.countries).features;
+      const byC = {}; // total per country
+      const byCC = {}; // per country per congress
+      const byCong = {}; // total per congress
+      rows.forEach(r=>{
+        byC[r.country] = (byC[r.country]||0) + r.uniqueUsers;
+        byCC[r.country] = byCC[r.country] || {};
+        byCC[r.country][r.congress] = (byCC[r.country][r.congress]||0) + r.uniqueUsers;
+        byCong[r.congress] = (byCong[r.congress]||0) + r.uniqueUsers;
+      });
+  const nameMap = CountryNameMap;
+  const values = countries.map(f=>{ const nm=f.properties.name; const k=Object.keys(nameMap).find(k=>nameMap[k]===nm); return {feature:f, value: byC[k]||0, code:k}; });
+      // Simple choropleth (stable baseline)
+      const baseCtx = mapCv.getContext('2d');
+      const baseChart = makeChart(baseCtx, {
+        type:'choropleth',
+        data:{ labels: values.map(v=>v.feature.properties.name), datasets:[{ label:'Active Users (Total)', outline: ChartGeo.topojson.mesh(topology, topology.objects.countries, (a,b)=>a!==b), data: values }]},
+        options:{ showOutline:true, showGraticule:true,
+          plugins:{ legend:{ position:'bottom' }, tooltip:{ callbacks:{ label:(ctx)=>{ const v = ctx.raw && ctx.raw.value ? ctx.raw.value : 0; return `Total Active Users: ${fmt(v)}`; } } } },
+          scales:{ projection:{ axis:'x', projection:'equalEarth' }, color:{ axis:'x', quantize:5, legend:{position:'bottom'} } }
+        }
+      });
+      // Plugin to highlight selected countries with a bright border after draw
+      try{
+        const hl = {
+          id:'selectedBorders',
+          afterDraw(chart){
+            try{
+              if (!state.selectedCountries || !state.selectedCountries.size) return;
+              const ctx = chart.ctx;
+              const ds = chart.data.datasets[0];
+              if (!ds || !ds.data) return;
+              ctx.save();
+              ctx.lineWidth = 2.5; ctx.strokeStyle = '#fbbf24'; // amber-400
+              ds.data.forEach((d, i)=>{
+                const code = values[i] && values[i].code;
+                if (code && state.selectedCountries.has(code)){
+                  const el = chart.getDatasetMeta(0).data[i];
+                  if (el && typeof el.draw === 'function'){
+                    try{ el.draw(ctx); }catch{}
+                    try{ if (el._path){ ctx.stroke(el._path); } }catch{}
+                  }
+                }
+              });
+              ctx.restore();
+            }catch{}
+          }
+        };
+        baseChart.config.plugins = baseChart.config.plugins || [];
+        baseChart.config.plugins.push(hl);
+        baseChart.update();
+      }catch{}
+
+      // Build bubble overlay on separate canvas to avoid mixed-controller issues
+  const coords = { US: [-98,39], UK: [-2,54], DE: [10,51], FR: [2,46], ES: [-4,40], IT: [12,42], BR: [-51,-10], JP: [138,37], CN: [104,35], CA: [-98,56] };
+  const palette = ChartPalette;
+      const topCongress = Object.entries(byCong).sort((a,b)=>b[1]-a[1]).slice(0,6).map(([k])=>k);
+      const bubbleSets = topCongress.map((cg, i)=>{
+        const data = Object.keys(coords).map(code=>{
+          const v = (byCC[code] && byCC[code][cg]) ? byCC[code][cg] : 0;
+          const [longitude, latitude] = coords[code];
+          return { longitude, latitude, value: v, code, congress: cg };
+        });
+        // Slightly more opaque fill for visibility
+        const bg = palette[i % palette.length] + '99'; // ~60% alpha in 8-digit hex
+        return { type:'bubbleMap', label: cg, data, backgroundColor: bg, borderColor: palette[i % palette.length], borderWidth: 1.5 };
+      });
+  // Render bubbles chart
+  const bubCtx = bubbleCanvas.getContext('2d');
+  const bubbleChart = makeChart(bubCtx, {
+        type:'bubbleMap',
+        data:{ datasets: bubbleSets },
+        options:{
+          responsive: true,
+          maintainAspectRatio: true,
+          plugins:{
+            legend:{ display:false },
+            tooltip:{
+              enabled:true,
+              callbacks:{
+                title:(items)=>{
+                  const it = items && items[0];
+                  if (!it) return '';
+                  const code = it.raw && it.raw.code;
+                  const nm = code && nameMap[code] ? nameMap[code] : '';
+                  return nm || 'Country';
+                },
+                label:(ctx)=>{
+                  const dsLabel = ctx.dataset && ctx.dataset.label || 'Congress';
+                  const v = ctx.raw && ctx.raw.value ? ctx.raw.value : 0;
+                  return `${dsLabel}: ${fmt(v)}`;
+                },
+                afterBody:(items)=>{
+                  try{
+                    const it = items && items[0]; if (!it) return '';
+                    const code = it.raw && it.raw.code; const total = code ? (byC[code]||0) : 0;
+                    return `Total (country): ${fmt(total)}`;
+                  }catch{ return ''; }
+                }
+              }
+            }
+          },
+          scales:{ projection:{ projection:'equalEarth' }, size:{ type:'linear', range:[6,28] } }
+        }
+      });
+      // Respect toggle state
+      bubbleCanvas.style.display = state.__bubblesOn ? '' : 'none';
+      // Click base map to select country (nearest feature)
+      mapCv.addEventListener('click', (evt)=>{
+        try{
+          if (!baseCtx || !baseCtx._chart) return;
+          const baseChart = baseCtx._chart;
+          const els = baseChart.getElementsAtEventForMode(evt, 'nearest', { intersect:true }, true);
+          if (!els || !els.length) return;
+          const idx = els[0].index ?? els[0].dataIndex;
+          const code = values[idx] && values[idx].code;
+          if (!code) return;
+          const multi = evt.metaKey || evt.ctrlKey || evt.shiftKey;
+          const oldTop = mapCard.getBoundingClientRect().top;
+          if (!multi) state.selectedCountries.clear();
+          if (state.selectedCountries.has(code)) state.selectedCountries.delete(code); else state.selectedCountries.add(code);
+          state.lastSelectedCountry = code;
+          state.__openDrillForCountry = code;
+          renderLib2Chips(state, state.chipsHost, state.filtersCard);
+          updateLib2Content();
+          requestAnimationFrame(()=>{
+            const newEl = document.getElementById('map-visual');
+            if (newEl){
+              const newTop = newEl.getBoundingClientRect().top;
+              window.scrollBy(0, newTop - oldTop);
+              requestAnimationFrame(()=>{
+                const newTop2 = newEl.getBoundingClientRect().top;
+                window.scrollBy(0, newTop2 - oldTop);
+              });
+            }
+          });
+          try{ setLib2FiltersCount(); }catch{}
+        }catch{}
+      });
+      // Click bubble to select country and (optionally) congress
+      bubbleCanvas.addEventListener('click', (evt)=>{
+        try{
+          if (!bubbleChart) return;
+          const els = bubbleChart.getElementsAtEventForMode(evt, 'nearest', { intersect:true }, true);
+          if (!els || !els.length) return;
+          const raw = els[0].element && els[0].element.$context && els[0].element.$context.raw ? els[0].element.$context.raw : els[0].raw;
+          const code = raw && raw.code; const cg = raw && raw.congress;
+          if (!code) return;
+          const multi = evt.metaKey || evt.ctrlKey || evt.shiftKey;
+          const oldTop = mapCard.getBoundingClientRect().top;
+          if (!multi) state.selectedCountries.clear();
+          if (state.selectedCountries.has(code)) state.selectedCountries.delete(code); else state.selectedCountries.add(code);
+          if (cg){
+            if (!multi) state.filters.congress.clear();
+            if (state.filters.congress.has(cg)) state.filters.congress.delete(cg); else state.filters.congress.add(cg);
+          }
+          state.lastSelectedCountry = code;
+          state.__openDrillForCountry = code;
+          renderLib2Chips(state, state.chipsHost, state.filtersCard);
+          updateLib2Content();
+          requestAnimationFrame(()=>{
+            const newEl = document.getElementById('map-visual');
+            if (newEl){
+              const newTop = newEl.getBoundingClientRect().top;
+              window.scrollBy(0, newTop - oldTop);
+              requestAnimationFrame(()=>{
+                const newTop2 = newEl.getBoundingClientRect().top;
+                window.scrollBy(0, newTop2 - oldTop);
+              });
+            }
+          });
+          try{ setLib2FiltersCount(); }catch{}
+        }catch{}
+      });
+      // Keep overlay intrinsic size in sync with base for accurate hit-testing
+      const syncSize = ()=>{
+        try{
+          if (mapCv.width && mapCv.height){
+            if (bubbleCanvas.width !== mapCv.width) bubbleCanvas.width = mapCv.width;
+            if (bubbleCanvas.height !== mapCv.height) bubbleCanvas.height = mapCv.height;
+          }
+        }catch{}
+      };
+      syncSize();
+      try{
+        const ro = new ResizeObserver(()=> syncSize());
+        ro.observe(mapWrap);
+      }catch{}
+      // Route pointer events to overlay only when a bubble is under the cursor
+      function routePointer(e){
+        try{
+          if (!state.__bubblesOn || !bubbleChart){ bubbleCanvas.style.pointerEvents = 'none'; return; }
+          const els = bubbleChart.getElementsAtEventForMode(e, 'nearest', { intersect:true }, true);
+          bubbleCanvas.style.pointerEvents = (els && els.length) ? 'auto' : 'none';
+        }catch{ bubbleCanvas.style.pointerEvents = 'none'; }
+      }
+      mapWrap.addEventListener('mousemove', routePointer);
+      mapWrap.addEventListener('mouseleave', ()=>{ bubbleCanvas.style.pointerEvents = 'none'; });
+    }).catch(()=>{ mapCard.append(el('div','small','(Map unavailable offline)')); });
+
+    // Additional view: Active Users by Country × Congress (toggleable)
+  const lineCard = card('Active Users by Country × Congress','col-12');
+  lineCard.id = 'cc-visual';
+    // Mode toggle
+    state.__countryCongressMode = state.__countryCongressMode || 'line';
+    const toggleWrap = el('div','', '');
+    toggleWrap.style.display = 'flex'; toggleWrap.style.justifyContent = 'flex-end'; toggleWrap.style.gap = '8px'; toggleWrap.style.marginBottom = '6px';
+    const btnLine = el('button','btn secondary','Line');
+    const btnBar = el('button','btn secondary','Stacked Bar');
+    const setActive = ()=>{
+      btnLine.classList.toggle('secondary', state.__countryCongressMode !== 'line');
+      btnBar.classList.toggle('secondary', state.__countryCongressMode !== 'bar');
+    };
+    btnLine.onclick = (e)=>{
+      e.preventDefault();
+      if (state.__countryCongressMode=== 'line') return;
+      const oldTop = lineCard.getBoundingClientRect().top;
+      state.__countryCongressMode = 'line';
+      updateLib2Content();
+      const adjust = ()=>{
+        const newEl = document.getElementById('cc-visual');
+        if (newEl){
+          const newTop = newEl.getBoundingClientRect().top;
+          window.scrollBy(0, newTop - oldTop);
+          // stabilize after next frame
+          requestAnimationFrame(()=>{
+            const newTop2 = newEl.getBoundingClientRect().top;
+            window.scrollBy(0, newTop2 - oldTop);
+          });
+        }
+      };
+      requestAnimationFrame(adjust);
+    };
+    btnBar.onclick = (e)=>{
+      e.preventDefault();
+      if (state.__countryCongressMode=== 'bar') return;
+      const oldTop = lineCard.getBoundingClientRect().top;
+      state.__countryCongressMode = 'bar';
+      updateLib2Content();
+      const adjust = ()=>{
+        const newEl = document.getElementById('cc-visual');
+        if (newEl){
+          const newTop = newEl.getBoundingClientRect().top;
+          window.scrollBy(0, newTop - oldTop);
+          requestAnimationFrame(()=>{
+            const newTop2 = newEl.getBoundingClientRect().top;
+            window.scrollBy(0, newTop2 - oldTop);
+          });
+        }
+      };
+      requestAnimationFrame(adjust);
+    };
+    setActive();
+    lineCard.append(toggleWrap);
+    toggleWrap.append(btnLine, btnBar);
+  const lineCv = canvas(110); lineCard.append(lineCv); state.contentEl.append(lineCard);
+    // Aggregate by country and congress
+    const byCountry = {};
+    const congressTotals = {};
+    rows.forEach(r=>{
+      byCountry[r.country] = byCountry[r.country] || { total:0, by:{} };
+      byCountry[r.country].by[r.congress] = (byCountry[r.country].by[r.congress]||0) + r.uniqueUsers;
+      byCountry[r.country].total += r.uniqueUsers;
+      congressTotals[r.congress] = (congressTotals[r.congress]||0) + r.uniqueUsers;
+    });
+    // Pick top countries and top congresses for readability
+    const countriesSorted = Object.entries(byCountry).sort((a,b)=>b[1].total - a[1].total).map(([c])=>c);
+    const countriesTop = countriesSorted.slice(0,10);
+    const congressSorted = Object.entries(congressTotals).sort((a,b)=>b[1]-a[1]).map(([k])=>k);
+    const congressTop = congressSorted.slice(0,8);
+    // Build datasets and render based on mode
+    const palette = ['#1f77b4','#ff7f0e','#2ca02c','#d62728','#9467bd','#8c564b','#e377c2','#7f7f7f','#bcbd22','#17becf'];
+    const countryTotalsMap = {}; countriesTop.forEach(c=> countryTotalsMap[c] = byCountry[c]?.total || 0);
+    const dataLine = countriesTop.map((c, idx)=>({
+      label: c,
+      data: congressTop.map(cg => (byCountry[c] && byCountry[c].by[cg]) ? byCountry[c].by[cg] : 0),
+      borderColor: palette[idx % palette.length],
+      backgroundColor: palette[idx % palette.length],
+      tension: 0.2,
+      pointRadius: 3,
+      pointHoverRadius: 5,
+      fill: false
+    }));
+    const dataBar = congressTop.map((cg, idx)=>({
+      label: cg,
+      data: countriesTop.map(c=> (byCountry[c] && byCountry[c].by[cg]) ? byCountry[c].by[cg] : 0),
+      backgroundColor: palette[idx % palette.length],
+      stack: 'stack1'
+    }));
+    const baseOpts = {
+      responsive:true,
+      plugins:{
+        legend:{ position:'bottom' },
+        tooltip:{
+          callbacks:{
+            title:(items)=> items && items[0] ? `${state.__countryCongressMode==='line' ? 'Congress' : 'Country'}: ${items[0].label}` : '',
+            label:(ctx)=> `${ctx.dataset.label}: ${fmt(state.__countryCongressMode==='line' ? ctx.parsed.y : ctx.parsed.y)}`,
+            afterBody:(items)=>{
+              try{
+                const it = items && items[0]; if (!it) return '';
+                if (state.__countryCongressMode==='line'){
+                  const country = it.dataset?.label; const total = countryTotalsMap[country] || 0;
+                  return `Total (country): ${fmt(total)}`;
+                } else {
+                  const idx = it.dataIndex; const c = countriesTop[idx]; const total = countryTotalsMap[c] || 0;
+                  return `Total (country): ${fmt(total)}`;
+                }
+              }catch{ return ''; }
+            }
+          }
+        }
+      }
+    };
+    if (state.__countryCongressMode==='line'){
+      makeChart(lineCv.getContext('2d'), {
+        type:'line',
+        data:{ labels: congressTop, datasets: dataLine },
+        options:{
+          ...baseOpts,
+          interaction:{ mode:'nearest', intersect:false },
+          scales:{ x:{ title:{ display:true, text:'Congress' } }, y:{ beginAtZero:true, title:{ display:true, text:'Unique Users' } } }
+        }
+      });
+    } else {
+      makeChart(lineCv.getContext('2d'), {
+        type:'bar',
+        data:{ labels: countriesTop, datasets: dataBar },
+        options:{
+          ...baseOpts,
+          scales:{ x:{ stacked:true }, y:{ stacked:true, beginAtZero:true } }
+        }
+      });
+    }
+
+    // Data Details table
+  const tableCard = card('Data Details','col-12');
+  // Search filter for Data Details
+  state.__detailsSearch = state.__detailsSearch || '';
+  const searchBarRow = el('div','');
+  searchBarRow.style.display = 'flex';
+  searchBarRow.style.justifyContent = 'flex-end';
+  searchBarRow.style.width = '100%';
+  // Sticky, compact search box that doesn't span the page
+  const searchWrap = el('div','');
+  searchWrap.id = 'details-search';
+  searchWrap.style.display = 'flex';
+  searchWrap.style.gap = '8px';
+  searchWrap.style.alignItems = 'center';
+  searchWrap.style.margin = '4px 0 8px 0';
+  searchWrap.style.maxWidth = '420px';
+  searchWrap.style.width = '100%';
+  searchWrap.style.position = 'sticky';
+  searchWrap.style.top = '64px';
+  searchWrap.style.zIndex = '20';
+  searchWrap.style.background = '#fff';
+  searchWrap.style.padding = '6px 8px';
+  searchWrap.style.border = '1px solid #eee';
+  searchWrap.style.borderRadius = '6px';
+  const searchInput = document.createElement('input');
+  searchInput.type = 'search';
+  searchInput.placeholder = 'Search publication/poster or title…';
+  searchInput.value = state.__detailsSearch;
+  searchInput.setAttribute('aria-label','Search Data Details');
+  searchInput.style.width = '100%';
+    const reRenderPreserveSearch = (doStateUpdate)=>{
+      try{
+        const oldTop = searchWrap.getBoundingClientRect().top;
+        const hadFocus = document.activeElement === searchInput;
+        const caret = typeof searchInput.selectionStart === 'number' ? searchInput.selectionStart : null;
+        doStateUpdate();
+        const adjust = ()=>{
+          const newWrap = document.getElementById('details-search');
+          if (newWrap){
+            const newTop = newWrap.getBoundingClientRect().top;
+            window.scrollBy(0, newTop - oldTop);
+            // Stabilize after next frame and restore focus/caret
+            requestAnimationFrame(()=>{
+              const newWrap2 = document.getElementById('details-search');
+              if (newWrap2){
+                const newTop2 = newWrap2.getBoundingClientRect().top;
+                window.scrollBy(0, newTop2 - oldTop);
+              }
+              if (hadFocus){
+                const newInput = newWrap.querySelector('input[type="search"]');
+                if (newInput){
+                  try{ newInput.focus({ preventScroll: true }); }catch{ try{ newInput.focus(); }catch{} }
+                  try{
+                    const pos = Math.max(0, Math.min((caret ?? newInput.value.length), newInput.value.length));
+                    newInput.setSelectionRange(pos, pos);
+                  }catch{}
+                }
+              }
+            });
+          }
+        };
+        requestAnimationFrame(adjust);
+      }catch{ doStateUpdate(); }
+    };
+    const clearSearch = el('button','btn secondary','Clear');
+    clearSearch.title = 'Clear search';
+    // Make the word Clear gray and the button more visible on hover/focus
+    clearSearch.style.color = '#6b7280'; // gray-500
+    clearSearch.style.border = '1px solid #d1d5db';
+    clearSearch.style.background = '#f9fafb';
+    clearSearch.style.borderRadius = '4px';
+    clearSearch.style.padding = '4px 8px';
+    clearSearch.addEventListener('mouseenter', ()=>{
+      clearSearch.style.background = '#e5e7eb'; // gray-200
+      clearSearch.style.color = '#111827'; // gray-900
+      clearSearch.style.textDecoration = 'underline';
+    });
+    clearSearch.addEventListener('mouseleave', ()=>{
+      clearSearch.style.background = '#f9fafb';
+      clearSearch.style.color = '#6b7280';
+      clearSearch.style.textDecoration = 'none';
+    });
+    clearSearch.addEventListener('focus', ()=>{
+      clearSearch.style.background = '#e5e7eb';
+      clearSearch.style.color = '#111827';
+      clearSearch.style.textDecoration = 'underline';
+      clearSearch.style.outline = '2px solid #9ca3af';
+      clearSearch.style.outlineOffset = '2px';
+    });
+    clearSearch.addEventListener('blur', ()=>{
+      clearSearch.style.background = '#f9fafb';
+      clearSearch.style.color = '#6b7280';
+      clearSearch.style.textDecoration = 'none';
+      clearSearch.style.outline = 'none';
+    });
+    clearSearch.onclick = (e)=>{ e.preventDefault(); if (!state.__detailsSearch) return; reRenderPreserveSearch(()=>{ state.__detailsSearch=''; updateLib2Content(); }); };
+    const onSearch = (val)=>{
+      const v=(val||'').trim();
+      if (v===state.__detailsSearch) return;
+      reRenderPreserveSearch(()=>{ state.__detailsSearch=v; updateLib2Content(); });
+    };
+    try{ searchInput.addEventListener('input', debounce((e)=> onSearch(e.target.value), 200)); }catch{ searchInput.addEventListener('input', (e)=> onSearch(e.target.value)); }
+  searchWrap.append(searchInput, clearSearch);
+  searchBarRow.append(searchWrap);
+  tableCard.append(searchBarRow);
+  const tableWrap = el('div','');
+  tableWrap.style.maxHeight = '50vh';
+  tableWrap.style.minHeight = '50vh';
+  tableWrap.style.overflow = 'auto';
+  tableWrap.style.fontSize = '0.9em';
+  const tbl = el('table','table');
+    const mmss2 = (s)=>{ const m=Math.floor(s/60), sec=s%60; return `${m}:${String(sec).padStart(2,'0')}` };
+    // Apply search to rows by kind or contentTitle
+    const detailsRows = (()=>{
+      if (!state.__detailsSearch) return rows;
+      const q = state.__detailsSearch.toLowerCase();
+      return rows.filter(r=> {
+        const a = (r.kind||'').toLowerCase();
+        const b = (r.contentTitle||'').toLowerCase();
+        return a.includes(q) || b.includes(q);
+      });
+    })();
+    const rowsHtml = detailsRows.slice(0,200).map(r=>`
+      <tr>
+        <td><a href="${r.url}" target="_blank" rel="noopener">${r.kind}</a></td>
+        <td>${r.contentTitle}</td>
+        <td>${fmt(r.uniqueUsers)}</td>
+        <td>${mmss2(r.avgEngTimeSec)}</td>
+        <td>${r.bounceRate}%</td>
+        <td>${fmt(r.engagedSessions)}</td>
+        <td>${r.viewsPerSession}</td>
+        <td>${fmt(r.pageViews)}</td>
+        <td>${fmt(r.firstVisits)}</td>
+        <td>${fmt(r.fileDownloads)}</td>
+      </tr>`).join('');
+    const emptyHtml = `<tr><td colspan="10" class="small" style="text-align:center;color:#666;padding:12px 8px;">No results match your search.</td></tr>`;
+  tbl.innerHTML = `<thead style=\"background:#0f1730;\"><tr>
+      <th>Publication / Poster</th>
+      <th>Content Title</th>
+      <th>Unique Users</th>
+      <th>Avg Eng. Time / Session</th>
+      <th>Bounce Rate</th>
+      <th>Engaged Sessions</th>
+      <th>Views / Session</th>
+      <th>Page Views</th>
+      <th>First Visits</th>
+      <th>File Downloads</th>
+    </tr></thead><tbody>${rowsHtml || emptyHtml}</tbody>`;
+  try{ Array.from(tbl.querySelectorAll('thead th')).forEach(th=>{ th.style.position='sticky'; th.style.top='0'; th.style.zIndex='2'; th.style.background='#0f1730'; }); }catch{}
+    tableWrap.append(tbl);
+    tableCard.append(tableWrap); state.contentEl.append(tableCard);
+
+    // Map Drill-through: open modal popup instead of inline section
+    (function(){
+      if (!state.__openDrillForCountry) return;
+      const cCode = state.__openDrillForCountry; state.__openDrillForCountry = null;
+      const cName = (CountryNameMap && CountryNameMap[cCode]) ? CountryNameMap[cCode] : cCode;
+      // Build rows for modal from the union of on-page Country filter and map selections; default to clicked country
+      const getDRows = ()=>{
+        const union = new Set([...(state.filters.country||new Set()), ...(state.selectedCountries||new Set())]);
+        if (!union.size) union.add(cCode);
+        return rows.filter(r=> union.has(r.country));
+      };
+      let dRows = getDRows();
+      if (!dRows.length) return;
+
+      // Build modal elements
+      const overlay = document.createElement('div');
+  overlay.style.position = 'fixed'; overlay.style.inset = '0'; overlay.style.background = 'rgba(0,0,0,0.7)'; overlay.style.zIndex = '1000';
+      overlay.setAttribute('role','dialog'); overlay.setAttribute('aria-modal','true'); overlay.setAttribute('aria-label', `Drill-through: ${cName}`);
+  // Modal container
+  const modal = document.createElement('div');
+  modal.style.position='absolute';
+  modal.style.left='50%';
+  modal.style.top='50%';
+  modal.style.transform='translate(-50%, -50%)';
+  modal.style.width='min(1000px, 96vw)';
+  modal.style.maxWidth='96vw';
+  modal.style.maxHeight='92vh';
+  modal.style.overflow='hidden';
+  modal.style.background='#111827'; modal.style.color='#e5e7eb'; modal.style.border='1px solid #374151'; modal.style.borderRadius='12px'; modal.style.boxShadow='0 16px 48px rgba(0,0,0,0.45)';
+  modal.style.display='flex'; modal.style.flexDirection='column';
+  // Header
+  const header = document.createElement('div');
+  header.style.display='flex'; header.style.justifyContent='space-between'; header.style.alignItems='center'; header.style.gap='8px'; header.style.padding='10px 14px'; header.style.borderBottom='1px solid #374151'; header.style.background='#111827';
+  const title = document.createElement('h3'); title.textContent = `Drill-through: ${cName}`; title.style.margin='0'; title.style.fontSize='1.05em'; title.style.color = '#e5e7eb';
+  const closeBtn = document.createElement('button'); closeBtn.textContent = '×'; closeBtn.setAttribute('aria-label','Close'); closeBtn.style.fontSize='1.2em'; closeBtn.style.lineHeight='1'; closeBtn.style.padding='4px 10px'; closeBtn.style.border='1px solid #4b5563'; closeBtn.style.borderRadius='6px'; closeBtn.style.background='#374151'; closeBtn.style.color='#e5e7eb';
+  closeBtn.addEventListener('mouseenter', ()=>{ closeBtn.style.background='#4b5563'; });
+  closeBtn.addEventListener('mouseleave', ()=>{ closeBtn.style.background='#374151'; });
+  header.append(title, closeBtn);
+  // Body
+  const body = document.createElement('div'); body.style.padding='10px 14px'; body.style.overflow='auto'; body.style.flex='1 1 auto'; body.style.background = '#111827'; body.style.color = '#e5e7eb';
+  const krow = el('div','kpis col-12');
+  krow.style.fontSize = '0.95em';
+  body.appendChild(krow);
+      // Inline Country (Onpage) filter inside modal to adjust comparison live
+      const countryCtl = document.createElement('div');
+      countryCtl.style.display='flex'; countryCtl.style.alignItems='flex-start'; countryCtl.style.gap='10px'; countryCtl.style.margin='8px 0 6px 0';
+      const countryLabel = document.createElement('div'); countryLabel.textContent = 'Country (Onpage)'; countryLabel.className='small'; countryLabel.style.minWidth='130px'; countryLabel.style.color='#e5e7eb'; countryCtl.appendChild(countryLabel);
+      const countryBox = document.createElement('div'); countryBox.style.flex='1 1 auto'; countryBox.style.background='#0f1730'; countryBox.style.border='1px solid #27325a'; countryBox.style.borderRadius='8px'; countryBox.style.padding='8px';
+      const cSearch = document.createElement('input'); cSearch.type='text'; cSearch.placeholder='Search countries…'; Object.assign(cSearch.style,{ width:'100%', marginBottom:'6px', padding:'6px 8px', borderRadius:'6px', border:'1px solid #223055', background:'#0b142d', color:'#e2e8f0' });
+      const cList = document.createElement('div'); Object.assign(cList.style,{ display:'grid', gridTemplateColumns:'repeat(3,minmax(0,1fr))', gap:'6px', maxHeight:'140px', overflow:'auto' });
+      const initUnion = new Set([...(state.filters.country||new Set()), ...(state.selectedCountries||new Set()), cCode]);
+      Countries.forEach(ct=>{
+        const lab = document.createElement('label'); Object.assign(lab.style,{ display:'flex', alignItems:'center', gap:'6px', border:'1px solid #223055', borderRadius:'6px', padding:'6px 8px' });
+        lab.innerHTML = `<input type="checkbox"> <span>${ct}</span>`;
+        const inp = lab.querySelector('input'); inp.checked = initUnion.has(ct);
+        cList.appendChild(lab);
+      });
+      const cRow = document.createElement('div'); Object.assign(cRow.style,{ display:'flex', justifyContent:'flex-end', gap:'8px', marginTop:'6px' });
+      const cClear = document.createElement('button'); cClear.className='btn secondary'; cClear.textContent='Clear';
+      const cApply = document.createElement('button'); cApply.className='btn'; cApply.textContent='Apply to page';
+      cRow.append(cClear, cApply);
+  countryBox.append(cSearch, cList, cRow); countryCtl.appendChild(countryBox);
+  // Hide the inline Country selector for now (can re-enable later)
+  countryCtl.style.display = 'none';
+  body.appendChild(countryCtl);
+      const filterCountryList = ()=>{
+        const q=(cSearch.value||'').toLowerCase().trim();
+        Array.from(cList.children).forEach(l=>{ const t=(l.textContent||'').toLowerCase(); l.style.display = (!q || t.includes(q)) ? '' : 'none'; });
+      };
+  cSearch.addEventListener('input', filterCountryList);
+      const refreshKPIs = ()=>{
+        try{
+          dRows = getDRows();
+          krow.innerHTML = '';
+          const sum = (k)=> dRows.reduce((a,b)=>a+b[k],0);
+          const avg = (k)=> dRows.length ? Math.round(dRows.reduce((a,b)=>a+b[k],0)/dRows.length) : 0;
+          krow.append(
+            kpi('Unique Users', fmt(sum('uniqueUsers')), 0),
+            kpi('Engaged Sessions', fmt(sum('engagedSessions')), 0),
+            kpi('File Downloads', fmt(sum('fileDownloads')), 0),
+            kpi('Avg. Eng. Time / Session', (typeof mmss==='function'? mmss(avg('avgEngTimeSec')): avg('avgEngTimeSec')+'s'), 0)
+          );
+        }catch{}
+      };
+  // Populate KPIs initially
+  refreshKPIs();
+      cClear.addEventListener('click', (e)=>{
+        e.preventDefault();
+        // Uncheck all and clear the on-page Country filter (keep map selections)
+        Array.from(cList.querySelectorAll('input[type="checkbox"]')).forEach(i=> i.checked=false);
+        try{ state.filters.country.clear(); }catch{}
+        try{ renderLib2Chips(state, state.chipsHost, state.filtersCard); setLib2FiltersCount(); updateLib2Content(); }catch{}
+        refreshKPIs(); renderView();
+      });
+      cApply.addEventListener('click', (e)=>{
+        e.preventDefault();
+        // Apply selections to the on-page Country filter
+        const next = new Set();
+        Array.from(cList.querySelectorAll('label')).forEach(l=>{ const inp=l.querySelector('input'); const name=l.querySelector('span')?.textContent; if (inp && inp.checked && name) next.add(name); });
+        try{ state.filters.country.clear(); next.forEach(v=> state.filters.country.add(v)); }catch{}
+        try{ renderLib2Chips(state, state.chipsHost, state.filtersCard); setLib2FiltersCount(); updateLib2Content(); }catch{}
+        refreshKPIs(); renderView();
+      });
+  // View controls (Table vs Line vs Mixed)
+      const vc = document.createElement('div');
+      vc.style.display='flex'; vc.style.justifyContent='flex-end'; vc.style.gap='8px'; vc.style.margin='8px 0';
+  const btnTable = document.createElement('button'); btnTable.textContent='Data View'; btnTable.className='btn secondary';
+      btnTable.style.background='#374151'; btnTable.style.color='#e5e7eb'; btnTable.style.border='1px solid #4b5563'; btnTable.style.borderRadius='6px'; btnTable.style.padding='4px 8px';
+      const btnLine = document.createElement('button'); btnLine.textContent='Line view'; btnLine.className='btn secondary';
+      btnLine.style.background='#374151'; btnLine.style.color='#e5e7eb'; btnLine.style.border='1px solid #4b5563'; btnLine.style.borderRadius='6px'; btnLine.style.padding='4px 8px';
+  const btnMixed = document.createElement('button'); btnMixed.textContent='Bar + Line'; btnMixed.className='btn secondary';
+  btnMixed.style.background='#374151'; btnMixed.style.color='#e5e7eb'; btnMixed.style.border='1px solid #4b5563'; btnMixed.style.borderRadius='6px'; btnMixed.style.padding='4px 8px';
+  vc.append(btnTable, btnLine, btnMixed); body.appendChild(vc);
+      const viewHost = document.createElement('div'); body.appendChild(viewHost);
+  let modalChart = null; let _persisted = (typeof localStorage!=='undefined' ? localStorage.getItem('lib2ModalView') : null); let modalMode = (_persisted==='table' || _persisted==='line' || _persisted==='mixed') ? _persisted : 'table';
+      const setActive = ()=>{
+        const activeStyle = (btn, on)=>{ btn.style.background = on ? '#4b5563' : '#374151'; };
+    activeStyle(btnTable, modalMode==='table'); activeStyle(btnLine, modalMode==='line'); activeStyle(btnMixed, modalMode==='mixed');
+      };
+      function renderTable(){
+        viewHost.innerHTML = '';
+        const cur = getDRows();
+        const topRows = [...cur].sort((a,b)=> b.pageViews - a.pageViews).slice(0,12);
+        const tbl2 = document.createElement('table'); tbl2.className = 'table'; tbl2.style.fontSize='0.9em'; tbl2.style.background='transparent'; tbl2.style.color='#e5e7eb'; tbl2.style.borderCollapse='collapse'; tbl2.style.width='100%';
+        tbl2.innerHTML = `<thead style="background:#1f2937;"><tr><th>Congress</th><th>Content</th><th>Users</th><th>Page Views</th></tr></thead><tbody>${topRows.map(r=>`<tr><td>${r.congress}</td><td>${r.contentTitle}</td><td>${fmt(r.uniqueUsers)}</td><td>${fmt(r.pageViews)}</td></tr>`).join('')}</tbody>`;
+        try{ Array.from(tbl2.querySelectorAll('th, td')).forEach(c=>{ c.style.borderBottom='1px solid #374151'; c.style.padding='6px 8px'; }); }catch{}
+        viewHost.appendChild(tbl2);
+      }
+      function renderLine(){
+        viewHost.innerHTML = '';
+        try{ if (modalChart && modalChart.destroy) { modalChart.destroy(); modalChart = null; } }catch{}
+        // Group by Congress with sums and weighted average for engagement time
+        const byCg = {};
+        getDRows().forEach(r=>{
+          const g = byCg[r.congress] || (byCg[r.congress] = { users:0, sessions:0, downloads:0, sumTimeSec:0 });
+          g.users += r.uniqueUsers || 0;
+          g.sessions += r.engagedSessions || 0;
+          g.downloads += r.fileDownloads || 0;
+          const s = r.engagedSessions || 0;
+          const t = r.avgEngTimeSec || 0;
+          // Weighted by sessions for a better average
+          g.sumTimeSec += (t * Math.max(1, s));
+        });
+        const labels = Object.entries(byCg).sort((a,b)=> (b[1].users||0) - (a[1].users||0)).map(([cg])=> cg);
+        const users = labels.map(l=> byCg[l]?.users || 0);
+        const sessions = labels.map(l=> byCg[l]?.sessions || 0);
+        const downloads = labels.map(l=> byCg[l]?.downloads || 0);
+        const avgTimeMin = labels.map(l=>{
+          const g = byCg[l];
+          const denom = Math.max(1, g.sessions||0);
+          const sec = (g.sumTimeSec||0) / denom;
+          return +(sec/60).toFixed(2); // minutes on a separate axis
+        });
+        const cv = document.createElement('canvas'); cv.height = 200; viewHost.appendChild(cv);
+        const ctx = cv.getContext('2d');
+        const colors = { users:'#60a5fa', sessions:'#34d399', downloads:'#fbbf24', time:'#a78bfa' };
+        modalChart = makeChart(ctx, {
+          type:'line',
+          data:{ labels, datasets:[
+            { label:'Unique Users', data: users, borderColor: colors.users, backgroundColor: colors.users, tension:0.2, pointRadius:3, pointHoverRadius:5, fill:false, yAxisID:'yCount' },
+            { label:'Engaged Sessions', data: sessions, borderColor: colors.sessions, backgroundColor: colors.sessions, tension:0.2, pointRadius:3, pointHoverRadius:5, fill:false, yAxisID:'yCount' },
+            { label:'File Downloads', data: downloads, borderColor: colors.downloads, backgroundColor: colors.downloads, tension:0.2, pointRadius:3, pointHoverRadius:5, fill:false, yAxisID:'yCount' },
+            { label:'Avg Eng. Time (min)', data: avgTimeMin, borderColor: colors.time, backgroundColor: colors.time, tension:0.2, pointRadius:3, pointHoverRadius:5, fill:false, yAxisID:'yTime' }
+          ]},
+          options:{
+            responsive:true,
+            interaction:{ mode:'nearest', intersect:false },
+            plugins:{
+              legend:{ labels:{ color:'#e5e7eb' }, position:'bottom' },
+              tooltip:{
+                callbacks:{
+                  label:(c)=>{
+                    const ds = c.dataset;
+                    if (ds.yAxisID === 'yTime'){
+                      // Convert minutes back to mm:ss for tooltip
+                      const totalSec = Math.round((c.parsed.y || 0) * 60);
+                      const m = Math.floor(totalSec/60), s = totalSec%60;
+                      const txt = `${m}:${String(s).padStart(2,'0')}`;
+                      return `${ds.label}: ${txt}`;
+                    }
+                    return `${ds.label}: ${fmt(c.parsed.y)}`;
+                  }
+                }
+              }
+            },
+            scales:{
+              x:{ title:{ display:true, text:'Congress', color:'#e5e7eb' }, ticks:{ color:'#d1d5db' }, grid:{ color:'rgba(255,255,255,0.1)' } },
+              yCount:{ beginAtZero:true, title:{ display:true, text:'Users / Sessions / Downloads', color:'#e5e7eb' }, ticks:{ color:'#d1d5db' }, grid:{ color:'rgba(255,255,255,0.1)' } },
+              yTime:{ beginAtZero:true, position:'right', title:{ display:true, text:'Avg Eng. Time (min)', color:'#e5e7eb' }, ticks:{ color:'#d1d5db' }, grid:{ drawOnChartArea:false } }
+            }
+          }
+        });
+      }
+      function renderMixed(){
+        viewHost.innerHTML = '';
+        try{ if (modalChart && modalChart.destroy) { modalChart.destroy(); modalChart = null; } }catch{}
+        // Group by Congress with sums and weighted average for engagement time
+        const byCg = {};
+        getDRows().forEach(r=>{
+          const g = byCg[r.congress] || (byCg[r.congress] = { users:0, sessions:0, downloads:0, sumTimeSec:0 });
+          g.users += r.uniqueUsers || 0;
+          g.sessions += r.engagedSessions || 0;
+          g.downloads += r.fileDownloads || 0;
+          const s = r.engagedSessions || 0; const t = r.avgEngTimeSec || 0;
+          g.sumTimeSec += (t * Math.max(1, s));
+        });
+        const labels = Object.entries(byCg).sort((a,b)=> (b[1].users||0) - (a[1].users||0)).map(([cg])=> cg);
+        const users = labels.map(l=> byCg[l]?.users || 0);
+        const sessions = labels.map(l=> byCg[l]?.sessions || 0);
+        const downloads = labels.map(l=> byCg[l]?.downloads || 0);
+        const avgTimeMin = labels.map(l=>{ const g = byCg[l]; const denom = Math.max(1, g.sessions||0); const sec = (g.sumTimeSec||0) / denom; return +(sec/60).toFixed(2); });
+        const cv = document.createElement('canvas'); cv.height = 220; viewHost.appendChild(cv);
+        const ctx = cv.getContext('2d');
+        const colors = { users:'#60a5fa', sessions:'#34d399', downloads:'#fbbf24', time:'#a78bfa' };
+        modalChart = makeChart(ctx, {
+          type:'bar',
+          data:{ labels, datasets:[
+            { type:'bar', label:'Unique Users', data: users, backgroundColor: colors.users, borderColor: colors.users, yAxisID:'yCount' },
+            { type:'bar', label:'Engaged Sessions', data: sessions, backgroundColor: colors.sessions, borderColor: colors.sessions, yAxisID:'yCount' },
+            { type:'bar', label:'File Downloads', data: downloads, backgroundColor: colors.downloads, borderColor: colors.downloads, yAxisID:'yCount' },
+            { type:'line', label:'Avg Eng. Time (min)', data: avgTimeMin, borderColor: colors.time, backgroundColor: colors.time, tension:0.2, pointRadius:3, pointHoverRadius:5, fill:false, yAxisID:'yTime' }
+          ]},
+          options:{
+            responsive:true,
+            interaction:{ mode:'nearest', intersect:false },
+            plugins:{
+              legend:{ labels:{ color:'#e5e7eb' }, position:'bottom' },
+              tooltip:{
+                callbacks:{
+                  label:(c)=>{
+                    const ds = c.dataset;
+                    if (ds.type==='line' || ds.yAxisID==='yTime'){
+                      const totalSec = Math.round((c.parsed.y || 0) * 60);
+                      const m = Math.floor(totalSec/60), s = totalSec%60;
+                      return `${ds.label}: ${m}:${String(s).padStart(2,'0')}`;
+                    }
+                    return `${ds.label}: ${fmt(c.parsed.y)}`;
+                  }
+                }
+              }
+            },
+            scales:{
+              x:{ title:{ display:true, text:'Congress', color:'#e5e7eb' }, ticks:{ color:'#d1d5db' }, grid:{ color:'rgba(255,255,255,0.1)' } },
+              yCount:{ beginAtZero:true, title:{ display:true, text:'Users / Sessions / Downloads', color:'#e5e7eb' }, ticks:{ color:'#d1d5db' }, grid:{ color:'rgba(255,255,255,0.1)' } },
+              yTime:{ beginAtZero:true, position:'right', title:{ display:true, text:'Avg Eng. Time (min)', color:'#e5e7eb' }, ticks:{ color:'#d1d5db' }, grid:{ drawOnChartArea:false } }
+            }
+          }
+        });
+      }
+      function renderView(){ setActive(); if (modalMode==='table') renderTable(); else if (modalMode==='line') renderLine(); else renderMixed(); }
+  btnTable.onclick = (e)=>{ e.preventDefault(); if (modalMode==='table') return; modalMode='table'; try{ localStorage.setItem('lib2ModalView', modalMode); }catch{} renderView(); };
+  btnLine.onclick = (e)=>{ e.preventDefault(); if (modalMode==='line') return; modalMode='line'; try{ localStorage.setItem('lib2ModalView', modalMode); }catch{} renderView(); };
+  btnMixed.onclick = (e)=>{ e.preventDefault(); if (modalMode==='mixed') return; modalMode='mixed'; try{ localStorage.setItem('lib2ModalView', modalMode); }catch{} renderView(); };
+      renderView();
+  modal.append(header, body); overlay.appendChild(modal);
+  const prevOverflow = document.body.style.overflow;
+  const close = ()=>{ try{ document.body.style.overflow = prevOverflow || ''; }catch{} overlay.remove(); if (state.contentEl){ try{ state.contentEl.focus({preventScroll:true}); }catch{} } };
+      overlay.addEventListener('click', (e)=>{ if (e.target===overlay) close(); });
+      closeBtn.addEventListener('click', (e)=>{ e.preventDefault(); close(); });
+      window.addEventListener('keydown', function escH(ev){ if (ev.key==='Escape'){ ev.preventDefault(); close(); window.removeEventListener('keydown', escH); } });
+  document.body.appendChild(overlay);
+  // Set overflow hidden after a tick to avoid interfering with anchor scroll preservation
+  setTimeout(()=>{ try{ document.body.style.overflow='hidden'; }catch{} }, 0);
+      try{ closeBtn.focus({ preventScroll: true }); }catch{}
+    })();
+  }
+
+  // KPIs
+  // Initial content render
+  updateLib2Content();
+
+  function buildLib2Filters(state, mountEl){
+    if (!mountEl) return;
+    mountEl.innerHTML = '';
+  const BUValues = ['Specialty Care','GenMed','Vaccines'];
+  mountEl.append(
+      mkFilter('Congress','congress', [...new Set(DATA.events.map(e=>e.name))]),
+      mkFilter('TA','ta', TAs),
+      mkFilter('Product','product', Products),
+      mkFilter('Country','country', Countries),
+      mkFilter('Business Unit','business', BUValues),
+      mkDateRangeFilter('Dates','dates')
+    );
+  }
+
+  // Summary updater for this page: show count of selections
+  function updateLib2Summary(label, countSpan, sum, set){
+    // Handle Set-based filters and date range object
+    if (set instanceof Set){
+      if (set.size===0) {
+        countSpan.textContent = 'All';
+        sum.title = `${label}: All`;
+      } else {
+        countSpan.textContent = `${set.size} selected`;
+        const vals = [...set];
+        sum.title = `${label}: ${vals.join(', ')}`;
+      }
+      return;
+    }
+    // Date range summary
+    const s = set && set.start ? set.start : null;
+    const e = set && set.end ? set.end : null;
+    if (!s && !e){
+      countSpan.textContent = 'All';
+      sum.title = `${label}: All`;
+    } else {
+      const txt = `${s || '…'} – ${e || '…'}`;
+      countSpan.textContent = txt;
+      sum.title = `${label}: ${txt}`;
+    }
+  }
+
+  function mkDateRangeFilter(label, key){
+    const box = el('div','filter');
+    box.dataset.key = key; box.dataset.label = label;
+    const details = document.createElement('details');
+    const sum = document.createElement('summary');
+    const countSpan = el('span','small','All');
+    sum.textContent = label + ': ';
+    sum.append(countSpan);
+    const clearBtn = document.createElement('button');
+    clearBtn.className = 'clear-btn'; clearBtn.type = 'button'; clearBtn.textContent = 'x';
+    clearBtn.title = `Clear ${label}`;
+    clearBtn.setAttribute('aria-label', `Clear ${label}`);
+    clearBtn.addEventListener('click', (e)=>{
+      e.preventDefault(); e.stopPropagation();
+      state.filters[key].start = null; state.filters[key].end = null;
+      // reset inputs
+      details.querySelectorAll('input[type="date"]').forEach(inp=> inp.value = '');
+      updateLib2Summary(label, countSpan, sum, state.filters[key]);
+      preservePageScroll(()=>{ renderLib2Chips(state, state.chipsHost, state.filtersCard); updateLib2Content(); });
+    });
+    sum.append(clearBtn);
+    details.append(sum);
+    const pop = el('div','pop'); details.append(pop);
+    const wrap = el('div','', '');
+    wrap.style.display = 'grid';
+    wrap.style.gridTemplateColumns = '1fr 1fr';
+    wrap.style.gap = '8px';
+    const startLab = document.createElement('label'); startLab.className = 'small'; startLab.textContent = 'Start date';
+    const endLab = document.createElement('label'); endLab.className = 'small'; endLab.textContent = 'End date';
+    const startInput = document.createElement('input'); startInput.type = 'date'; startInput.value = state.filters[key].start || '';
+    const endInput = document.createElement('input'); endInput.type = 'date'; endInput.value = state.filters[key].end || '';
+    const startWrap = document.createElement('div'); const endWrap = document.createElement('div');
+    startWrap.style.display = endWrap.style.display = 'flex';
+    startWrap.style.flexDirection = endWrap.style.flexDirection = 'column';
+    startWrap.append(startLab, startInput);
+    endWrap.append(endLab, endInput);
+    wrap.append(startWrap, endWrap);
+    const applyRow = el('div','applyRow');
+    const btnNone = el('button','btn secondary','x');
+    btnNone.setAttribute('title', `Clear ${label}`);
+    btnNone.setAttribute('aria-label', `Clear ${label}`);
+    const btnApply = el('button','btn','Apply');
+    applyRow.append(btnNone, btnApply);
+    pop.append(wrap, applyRow);
+    btnNone.onclick = (e)=>{ e.preventDefault(); startInput.value=''; endInput.value=''; };
+    btnApply.onclick = (e)=>{
+      e.preventDefault();
+      const s = startInput.value || null;
+      const e2 = endInput.value || null;
+      state.filters[key].start = s; state.filters[key].end = e2;
+      updateLib2Summary(label, countSpan, sum, state.filters[key]);
+      details.removeAttribute('open');
+      preservePageScroll(()=>{ renderLib2Chips(state, state.chipsHost, state.filtersCard); updateLib2Content(); });
+    };
+    // initialize summary preview
+    updateLib2Summary(label, countSpan, sum, state.filters[key]);
+    box.append(details);
+    return box;
+  }
+
+  function mkFilter(label, key, values){
+    const box = el('div','filter');
+    box.dataset.key = key; box.dataset.label = label;
+    const details = document.createElement('details');
+    const sum = document.createElement('summary');
+    // summary label with preview and per-filter clear button
+    const countSpan = el('span','small','All');
+    sum.textContent = label + ': ';
+    sum.append(countSpan);
+  const clearBtn = document.createElement('button');
+  clearBtn.className = 'clear-btn'; clearBtn.type = 'button'; clearBtn.textContent = 'x';
+  clearBtn.title = `Clear ${label}`;
+  clearBtn.setAttribute('aria-label', `Clear ${label}`);
+  clearBtn.addEventListener('click', (e)=>{
+    e.preventDefault(); e.stopPropagation();
+    state.filters[key].clear();
+    // uncheck in this list
+    details.querySelectorAll('input[type="checkbox"]').forEach(c=> c.checked=false);
+    updateLib2Summary(label, countSpan, sum, state.filters[key]);
+    preservePageScroll(()=>{ renderLib2Chips(state, state.chipsHost, state.filtersCard); updateLib2Content(); try{ setLib2FiltersCount(); }catch{} });
+  });
+    sum.append(clearBtn);
+    details.append(sum);
+  const pop = el('div','pop'); details.append(pop);
+  // Search input
+  const searchWrap = el('div','');
+  searchWrap.style.padding = '6px 6px 4px';
+  const searchInput = document.createElement('input');
+  searchInput.type = 'text';
+  searchInput.placeholder = 'Search...';
+  searchInput.setAttribute('aria-label', `Search ${label}`);
+  Object.assign(searchInput.style, { width:'100%', padding:'6px 8px', borderRadius:'8px', border:'1px solid #223055', background:'#0b142d', color:'#e2e8f0' });
+  searchWrap.append(searchInput);
+  const list = el('div','chklist');
+    values.forEach(v=>{
+      const lab=document.createElement('label');
+      lab.innerHTML = `<input type="checkbox"> <span>${v}</span>`;
+      const input = lab.querySelector('input');
+      if (state.filters[key].size && state.filters[key].has(v)) input.checked = true;
+      list.append(lab);
+    });
+  const noRes = el('div','small','No results');
+  noRes.style.padding = '4px 8px';
+  noRes.style.display = 'none';
+  noRes.style.color = '#94a3b8';
+    const applyRow = el('div','applyRow');
+  const btnAll = el('button','btn secondary','Select all'); const btnNone = el('button','btn secondary','x'); const btnApply = el('button','btn','Apply');
+  btnNone.setAttribute('title', `Clear ${label}`);
+  btnNone.setAttribute('aria-label', `Clear ${label}`);
+    applyRow.append(btnAll, btnNone, btnApply);
+    pop.append(searchWrap, list, noRes, applyRow);
+    function filterList(){
+      const q = (searchInput.value||'').toLowerCase().trim();
+      let shown = 0;
+      list.querySelectorAll('label').forEach(l=>{
+        const txt = (l.textContent||'').toLowerCase();
+        const hit = !q || txt.includes(q);
+        l.style.display = hit ? '' : 'none';
+        if (hit) shown++;
+      });
+      noRes.style.display = shown ? 'none' : '';
+    }
+    searchInput.addEventListener('input', filterList);
+    btnAll.onclick = (e)=>{ e.preventDefault(); list.querySelectorAll('input[type="checkbox"]').forEach(c=>c.checked=true); };
+    btnNone.onclick = (e)=>{ e.preventDefault(); list.querySelectorAll('input[type="checkbox"]').forEach(c=>c.checked=false); };
+  btnApply.onclick = (e)=>{ e.preventDefault(); state.filters[key].clear(); list.querySelectorAll('input[type="checkbox"]').forEach(c=>{ if(c.checked) state.filters[key].add(c.nextElementSibling.textContent); }); updateLib2Summary(label, countSpan, sum, state.filters[key]); /* close current dropdown on apply */ details.removeAttribute('open'); preservePageScroll(()=>{ renderLib2Chips(state, state.chipsHost, state.filtersCard); updateLib2Content(); try{ setLib2FiltersCount(); }catch{} }); };
+    // initialize summary preview
+  updateLib2Summary(label, countSpan, sum, state.filters[key]);
+    box.append(details);
+    return box;
+  }
+
+  function renderLib2Chips(state, host, filtersCard){
+    if (!host) return;
+    host.innerHTML = '';
+    const entries = [
+      {label:'Congress', key:'congress'},
+      {label:'TA', key:'ta'},
+      {label:'Product', key:'product'},
+      {label:'Business Unit', key:'business'},
+      {label:'Dates', key:'dates'}
+    ];
+    const chips = [];
+    entries.forEach(({label,key})=>{
+  const val = state.filters[key];
+      if (key === 'dates'){
+        const s = val && val.start; const e = val && val.end;
+        if (s || e){
+          const chip = document.createElement('span');
+          chip.className = 'chip';
+          const txt = `${s || '…'} – ${e || '…'}`;
+          chip.innerHTML = `${label}: ${txt} <button class="x" aria-label="Clear ${label}">x</button>`;
+          chip.querySelector('.x').addEventListener('click', ()=>{
+            state.filters.dates.start = null; state.filters.dates.end = null;
+            const details = filtersCard.querySelector(`.filter[data-key="dates"] details`);
+            if (details){
+              const sum = details.querySelector('summary');
+              const span = sum && sum.querySelector('.small');
+              if (span) updateLib2Summary(label, span, sum, state.filters.dates);
+              details.querySelectorAll('input[type="date"]').forEach(inp=> inp.value='');
+            }
+            preservePageScroll(()=>{ renderLib2Chips(state, state.chipsHost, state.filtersCard); updateLib2Content(); try{ setLib2FiltersCount(); }catch{} });
+          });
+          chips.push(chip);
+        }
+      } else {
+        const set = val;
+        if (set.size>0){
+          const vals = [...set];
+          const preview = vals.slice(0,3).join(', ');
+          const more = vals.length>3 ? ` +${vals.length-3}` : '';
+          const chip = document.createElement('span');
+          chip.className = 'chip';
+          chip.innerHTML = `${label}: ${preview}${more} <button class="x" aria-label="Clear ${label}">x</button>`;
+          chip.querySelector('.x').addEventListener('click', ()=>{
+            set.clear();
+            const details = filtersCard.querySelector(`.filter[data-key="${key}"] details`);
+            if (details){
+              const sum = details.querySelector('summary');
+              const span = sum && sum.querySelector('.small');
+              if (span) updateLib2Summary(label, span, sum, set);
+              details.querySelectorAll('.chklist input[type="checkbox"]').forEach(c=> c.checked=false);
+            }
+            // Sync overlay if open
+            try{
+              const innerRow = state.__panelInnerRow;
+              if (innerRow){
+                const det2 = innerRow.querySelector(`.filter[data-key="${key}"] details`);
+                if (det2){
+                  const sum2 = det2.querySelector('summary');
+                  const span2 = sum2 && sum2.querySelector('.small');
+                  if (span2) updateLib2Summary(label, span2, sum2, set);
+                  det2.querySelectorAll('.chklist input[type="checkbox"]').forEach(c=> c.checked=false);
+                }
+              }
+            }catch{}
+            preservePageScroll(()=>{ renderLib2Chips(state, state.chipsHost, state.filtersCard); updateLib2Content(); try{ setLib2FiltersCount(); }catch{} });
+          });
+          chips.push(chip);
+        }
+      }
+    });
+    // Unified Country chip: union of map selections and checkbox filter
+    (function(){
+      const union = new Set([...(state.selectedCountries||new Set()), ...(state.filters.country||new Set())]);
+      if (!union.size) return;
+      const vals = [...union];
+      const preview = vals.slice(0,3).join(', ');
+      const more = vals.length>3 ? ` +${vals.length-3}` : '';
+      const chip = document.createElement('span');
+      chip.className = 'chip';
+      chip.innerHTML = `Country: ${preview}${more} <button class="x" aria-label="Clear Country">x</button>`;
+      chip.querySelector('.x').addEventListener('click', ()=>{
+        // Clear both sources
+        try{ state.selectedCountries.clear(); }catch{}
+        try{ state.filters.country.clear(); }catch{}
+        // Uncheck in main card and overlay
+        const details = filtersCard.querySelector(`.filter[data-key="country"] details`);
+        if (details){
+          const sum = details.querySelector('summary');
+          const span = sum && sum.querySelector('.small');
+          if (span) updateLib2Summary('Country', span, sum, state.filters.country);
+          details.querySelectorAll('.chklist input[type="checkbox"]').forEach(c=> c.checked=false);
+        }
+        try{
+          const innerRow = state.__panelInnerRow;
+          if (innerRow){
+            const det2 = innerRow.querySelector(`.filter[data-key="country"] details`);
+            if (det2){
+              const sum2 = det2.querySelector('summary');
+              const span2 = sum2 && sum2.querySelector('.small');
+              if (span2) updateLib2Summary('Country', span2, sum2, state.filters.country);
+              det2.querySelectorAll('.chklist input[type="checkbox"]').forEach(c=> c.checked=false);
+            }
+          }
+        }catch{}
+        preservePageScroll(()=>{ renderLib2Chips(state, state.chipsHost, state.filtersCard); updateLib2Content(); try{ setLib2FiltersCount(); }catch{} });
+      });
+      chips.push(chip);
+    })();
+    if (chips.length){
+      chips.forEach(c=> host.appendChild(c));
+      const btn = document.createElement('button');
+      btn.className = 'clear-all'; btn.type='button'; btn.textContent = 'Clear all';
+      btn.addEventListener('click', ()=>{
+        // Reset state
+        preservePageScroll(()=>{ clearLib2All(); });
+        // Sync overlay controls if open
+        try{
+          const innerRow = state.__panelInnerRow;
+          if (innerRow){
+            innerRow.querySelectorAll('.chklist input[type="checkbox"]').forEach(c=> c.checked=false);
+            innerRow.querySelectorAll('input[type="date"]').forEach(inp=> inp.value='');
+            const pairs = [
+              {label:'Congress', key:'congress'},
+              {label:'TA', key:'ta'},
+              {label:'Product', key:'product'},
+              {label:'Country', key:'country'},
+              {label:'Business Unit', key:'business'},
+              {label:'Dates', key:'dates'}
+            ];
+            pairs.forEach(({label,key})=>{
+              const details = innerRow.querySelector(`.filter[data-key="${key}"] details`);
+              if (details){
+                const sum = details.querySelector('summary');
+                const span = sum && sum.querySelector('.small');
+                if (span) updateLib2Summary(label, span, sum, state.filters[key]);
+              }
+            });
+          }
+        }catch{}
+        // Re-render chips in both main host and overlay host if present
+        try{ renderLib2Chips(state, host, filtersCard); }catch{}
+        try{ if (state.__panelChipsHost && state.__panelChipsHost !== host) renderLib2Chips(state, state.__panelChipsHost, filtersCard); }catch{}
+        try{ setLib2FiltersCount(); }catch{}
+        try{ updateLib2Content(); }catch{}
+      });
+      host.appendChild(btn);
+    }
+    // Also reflect chips in overlay if open by rerendering using this function
+    try{
+      if (state.__panelChipsHost && state.__panelChipsHost !== host){
+        renderLib2Chips(state, state.__panelChipsHost, filtersCard);
+      }
+    }catch{}
+  }
+}
+
+/*** 3) CONGRESSES & EVENTS ***/
+function renderEvents(){
+  const view = clearView(); buildMultiFilters();
+  const _r = ROUTES.find(x=>x.id==='events') || ROUTES[0];
+  $("#pageTitle").textContent = _r.title; $("#pageSubtitle").textContent = _r.subtitle;
+
+  const rows = DATA.events.filter(r=> (r.business===undefined || matchesMulti(FILTER.business, r.business)) );
+
+  const kpiWrap = el("div","kpis col-12");
+  const totalAtt = rows.reduce((a,b)=>a+b.attendees,0);
+  const avgBooth = Math.round(rows.reduce((a,b)=>a+b.boothTimeMin,0)/rows.length);
+  const avgRel = Math.round(rows.reduce((a,b)=>a+b.surveyRelevance,0)/rows.length);
+  const totalInsights = rows.reduce((a,b)=>a+b.insights,0);
+  kpiWrap.append(
+    kpi("# Attendees (sum)", fmt(totalAtt), randBetween(-8,12)),
+    kpi("Booth time (avg min)", fmt(avgBooth), randBetween(-5,9)),
+    kpi("Event relevance (avg)", avgRel+"%", randBetween(-3,5), pctColor(avgRel)),
+    kpi("Insights collected (sum)", fmt(totalInsights), randBetween(-4,10))
+  );
+  view.append(kpiWrap);
+
+  const score = card("Event scorecard","col-8");
+  const tbl = el('table','table');
+  tbl.innerHTML = `<thead><tr>
+    <th>Event</th><th>Business Unit</th><th>Attendees</th><th>Booth min</th><th>Relevance</th><th>Insights</th><th>Follow‑ups done</th>
+  </tr></thead><tbody>${
+    rows.map(r=>`<tr>
+      <td><span class="badge">${r.name}</span></td>
+      <td>${r.business || '-'}</td>
+      <td>${fmt(r.attendees)}</td>
+      <td>${fmt(r.boothTimeMin)}</td>
+      <td><span style="color:${pctColor(r.surveyRelevance)}">${r.surveyRelevance}%</span></td>
+      <td>${r.insights}</td>
+      <td>${r.followupsDonePct}%</td>
+    </tr>`).join("")
+  }</tbody>`;
+  score.append(tbl); view.append(score);
+
+  const yoy = card("Year-over-year congress performance (attendees)","col-4");
+  const yoyCanvas = canvas(); yoy.append(yoyCanvas); view.append(yoy);
+  makeChart(yoyCanvas.getContext('2d'), {
+    type:'bar',
+    data:{ labels: rows.map(r=>r.name),
+      datasets:[ {label:'Last year', data: rows.map(r=>Math.round(r.attendees*0.92))},
+                 {label:'This year', data: rows.map(r=>r.attendees)} ]},
+    options:{ indexAxis:'y', scales:{ x:{ beginAtZero:true } } }
+  });
+
+  const top = [...rows].sort((a,b)=>b.insights-a.insights).slice(0,7);
+  const topCard = card("Top events by actionable insights","col-12");
+  const topCanvas = canvas(110); topCard.append(topCanvas); view.append(topCard);
+  makeChart(topCanvas.getContext('2d'), {
+    type:'bar',
+    data:{ labels: top.map(r=>r.name), datasets:[{label:'Insights', data: top.map(r=>r.insights)}]},
+    options:{ scales:{ y:{ beginAtZero:true } } }
+  });
+}
+
+/*** 3a) LIBRARY OF CONGRESSES — lives in renderLibrary.js ***/
+function renderLibrary(){
+  // If you prefer the modular file, keep this stub so ROUTES resolves.
+  // The real implementation will be picked up from renderLibrary.js (loaded below).
+  if (window.__extRenderLibrary) return window.__extRenderLibrary();
+  // Fallback (simple message) if renderLibrary.js is missing:
+  const v = clearView(); buildMultiFilters();
+  v.append(el('div','card col-12','<h3>Library of Congresses</h3><div class="small">Missing renderLibrary.js</div>'));
+}
+
+/*** 4) LEARNING & CAPABILITY ***/
+function renderLearning(){
+  const view = clearView(); buildMultiFilters();
+  const _r = ROUTES.find(x=>x.id==='learning') || ROUTES[0];
+  $("#pageTitle").textContent = _r.title; $("#pageSubtitle").textContent = _r.subtitle;
+
+  const rows = DATA.learning.filter(r=> (r.business===undefined || matchesMulti(FILTER.business, r.business)) );
+  const compl = Math.round(rows.reduce((a,b)=>a+b.completion,0)/rows.length);
+  const time = Math.round(rows.reduce((a,b)=>a+b.timeToComplete,0)/rows.length);
+  const knowledge = Math.round(rows.reduce((a,b)=>a+b.knowledge,0)/rows.length);
+  const skill = Math.round(rows.reduce((a,b)=>a+b.skill,0)/rows.length);
+
+  const kpiWrap = el("div","kpis col-12");
+  kpiWrap.append(
+    kpi("Training completion (avg)", compl+"%", randBetween(-3,6), pctColor(compl)),
+    kpi("Avg time to complete (days)", time, randBetween(-2,4)),
+    kpi("Knowledge test (avg)", knowledge+"%", randBetween(-3,6), pctColor(knowledge)),
+    kpi("Skills self‑assessment (avg)", skill+"%", randBetween(-3,6), pctColor(skill))
+  );
+  view.append(kpiWrap);
+
+  const radarCard = card("Capability radar by TA (coverage vs requirement)","col-6");
+  const radarCanvas = canvas(); radarCard.append(radarCanvas); view.append(radarCard);
+  const dims = ["Therapy Knowledge","Clinical Evidence","Data Literacy","Compliance","Engagement","Digital Tools"];
+  const coverage = dims.map(()=>randBetween(55,90));
+  const req = dims.map(()=>randBetween(75,95));
+  makeChart(radarCanvas.getContext('2d'), {
+    type:'radar',
+    data:{ labels: dims, datasets:[ {label:'Coverage', data:coverage}, {label:'Requirement', data:req} ] },
+    options:{ scales:{ r:{ suggestedMin:0, suggestedMax:100 } } }
+  });
+
+  const heat = card("Training compliance heatmap by market","col-6"); const grid = el("div","heat-grid");
+  Countries.forEach(c=>{
+    const v = rows.filter(r=>r.country===c).reduce((a,b)=>a+b.completion,0)/TAs.length;
+    const cell = el('div','cell', `<div class="small">${c}</div>`);
+    cell.style.background = heatColor(v, 0, 100); cell.style.borderColor="#1f2e55";
+    const tag = el('div','small', `<span class="badge">${Math.round(v)}%</span>`); tag.style.position="absolute"; tag.style.bottom="4px";
+    cell.append(tag); grid.append(cell);
+  });
+  heat.append(grid); view.append(heat);
+
+  const trend = card("Readiness score trend","col-12");
+  const tCanvas = canvas(110); trend.append(tCanvas); view.append(trend);
+  makeChart(tCanvas.getContext('2d'), {
+    type:'line',
+    data:{ labels: DATA.progressByQuarter.map(x=>x.label), datasets:[
+      {label:'Knowledge', data: DATA.progressByQuarter.map((_,i)=> knowledge + Math.round(Math.sin(i/2)*4))},
+      {label:'Skills', data: DATA.progressByQuarter.map((_,i)=> skill + Math.round(Math.cos(i/2)*3))}
+    ]},
+    options:{ scales:{ y:{ beginAtZero:true, max:100 } } }
+  });
+}
+
+/*** 5) DIGITAL & MEDIA ***/
+function renderDigital(){
+  const view = clearView(); buildMultiFilters();
+  const _r = ROUTES.find(x=>x.id==='digital') || ROUTES[0];
+  $("#pageTitle").textContent = _r.title; $("#pageSubtitle").textContent = _r.subtitle;
+
+  const rows = DATA.digital.filter(r=> (r.business===undefined || matchesMulti(FILTER.business, r.business)) );
+  const totalVisits = rows.reduce((a,b)=>a+b.visits,0);
+  const unique = rows.reduce((a,b)=>a+b.unique,0);
+  const avgOpen = Math.round(rows.reduce((a,b)=>a+b.emailOpen,0)/rows.length);
+  const avgCTR = (rows.reduce((a,b)=>a+Number(b.emailCTR),0)/rows.length).toFixed(1);
+
+  const kpiWrap = el("div","kpis col-12");
+  kpiWrap.append(
+    kpi("Website visits (sum)", fmt(totalVisits), randBetween(-8,14)),
+    kpi("Unique visitors (sum)", fmt(unique), randBetween(-8,14)),
+    kpi("Email open rate (avg)", avgOpen+"%", randBetween(-4,8), pctColor(avgOpen)),
+    kpi("Email CTR (avg)", avgCTR+"%", randBetween(-2,6))
+  );
+  view.append(kpiWrap);
+
+  const funnel = card("Funnel: digital reach → engagement → follow‑up","col-7");
+  const fCanvas = canvas(); funnel.append(fCanvas); view.append(funnel);
+  const reach = rows.reduce((a,b)=>a+b.impressions,0);
+  const engagement = rows.reduce((a,b)=>a+b.views+b.clicks,0);
+  const followup = Math.round(engagement*0.18);
+  makeChart(fCanvas.getContext('2d'), {
+    type:'bar',
+    data:{ labels:["Reach","Engagement","Follow‑up"], datasets:[{label:'Volume', data:[reach, engagement, followup]}] },
+    options:{ indexAxis:'y', scales:{ x:{ beginAtZero:true } } }
+  });
+
+  const leader = card("Top‑performing content (engagement rate)","col-5");
+  const tbl = el('table','table');
+  const scored = rows.map(r=>({name:r.asset, rate: ((r.clicks+r.views)/(r.impressions||1)*100).toFixed(2), seg:r.segment}))
+                     .sort((a,b)=>b.rate-a.rate).slice(0,8);
+  tbl.innerHTML = `<thead><tr><th>Asset</th><th>Segment</th><th>Eng. rate</th></tr></thead>
+    <tbody>${scored.map(r=>`<tr><td>${r.name}</td><td><span class="badge">${r.seg}</span></td><td>${r.rate}%</td></tr>`).join("")}</tbody>`;
+  leader.append(tbl); view.append(leader);
+
+  const geo = card("Geographic breakdown of digital engagement","col-12");
+  const gCanvas = canvas(110); geo.append(gCanvas); view.append(geo);
+  const byC = Countries.map(c=>{
+    const sample = rows[randBetween(0,rows.length-1)];
+    return {c, v: sample.views + sample.clicks + sample.shares + randBetween(400,3000)}
+  });
+  makeChart(gCanvas.getContext('2d'), {
+    type:'bar',
+    data:{ labels:byC.map(x=>x.c), datasets:[{label:'Engagements', data:byC.map(x=>x.v)}]},
+    options:{ scales:{ y:{ beginAtZero:true } } }
+  });
+}
+
+/*** 6) FOUNDATIONAL DATA & INSIGHTS ***/
+function renderFoundational(){
+  const view = clearView(); buildMultiFilters();
+  const _r = ROUTES.find(x=>x.id==='foundational') || ROUTES[0];
+  $("#pageTitle").textContent = _r.title; $("#pageSubtitle").textContent = _r.subtitle;
+
+  const rows = DATA.foundational;
+  const kpiWrap = el("div","kpis col-12");
+  const sources = rows.reduce((a,b)=>a+b.internalSources,0);
+  const ext = rows.reduce((a,b)=>a+b.externalDatasets,0);
+  const q = Math.round(rows.reduce((a,b)=>a+b.quality,0)/rows.length);
+  const autoAvg = Math.round(rows.reduce((a,b)=>a+b.automatedPct,0)/rows.length);
+  kpiWrap.append(
+    kpi("# Active internal data sources", fmt(sources), randBetween(-1,4)),
+    kpi("# External licensed datasets", fmt(ext), randBetween(-2,3)),
+    kpi("Data quality score (avg)", q+"%", randBetween(-3,5), pctColor(q)),
+    kpi("% sources automated onboarding (avg)", autoAvg+"%", randBetween(-3,6), pctColor(autoAvg)),
+  );
+  view.append(kpiWrap);
+
+  const coverage = card("Data coverage heatmap (TA × metric type)","col-6");
+  const grid = el("div","heat-grid");
+  const metrics = ["Activity","NPS","KAB","Events","Learning","Digital","Quality","Automation"];
+  TAs.forEach(ta=>{
+    metrics.forEach(m=>{
+      const v = randBetween(30,100);
+      const cell = el('div','cell', `<div class="small">${ta.split(' ')[0]}<br>${m}</div>`);
+      cell.style.background = heatColor(v, 0, 100); cell.style.borderColor="#1f2e55";
+      const tag = el('div','small', `<span class="badge">${v}%</span>`); tag.style.position="absolute"; tag.style.bottom="4px";
+      cell.append(tag); grid.append(cell);
+    });
+  });
+  coverage.append(grid); view.append(coverage);
+
+  const qual = card("Data quality trend over time","col-6");
+  const qCanvas = canvas(); qual.append(qCanvas); view.append(qual);
+  makeChart(qCanvas.getContext('2d'), {
+    type:'line',
+    data:{ labels: DATA.progressByQuarter.map(x=>x.label), datasets:[
+      {label:'Completeness', data: DATA.progressByQuarter.map((_,i)=> 80 + Math.round(Math.sin(i/2)*6))},
+      {label:'Accuracy', data: DATA.progressByQuarter.map((_,i)=> 88 + Math.round(Math.cos(i/3)*4))},
+      {label:'Timeliness', data: DATA.progressByQuarter.map((_,i)=> 84 + Math.round(Math.sin(i/3)*5))}
+    ]},
+    options:{ scales:{ y:{ beginAtZero:true, max:100 } } }
+  });
+
+  /* Line chart: Automation progress tracker (trend) */
+  const auto = card("Automation progress tracker (trend)","col-12");
+  const aCanvas = canvas(110); auto.append(aCanvas); view.append(auto);
+  const autoTrend = DATA.progressByQuarter.map((_,i)=> autoAvg + Math.round(Math.sin(i/2)*5 + Math.random()*2));
+  makeChart(aCanvas.getContext('2d'), {
+    type:'line',
+    data:{ labels: DATA.progressByQuarter.map(x=>x.label), datasets:[{label:'% Automated onboarding', data:autoTrend, borderWidth:2, tension:.25}] },
+    options:{ scales:{ y:{ beginAtZero:true, max:100 } } }
+  });
+}
+
+/*** 7) CEO VIEW (EXECUTIVE) ***/
+function renderCEO(){
+  const view = clearView(); buildMultiFilters();
+  const _r = ROUTES.find(x=>x.id==='ceo') || ROUTES[0];
+  $("#pageTitle").textContent = _r.title; $("#pageSubtitle").textContent = _r.subtitle;
+
+  const kpiWrap = el("div","kpis col-12");
+  const subset = DATA.interactions.rows.filter(passFilters);
+  const totalInteractions = subset.reduce((a,b)=>a+b.interactions,0);
+
+  const npsRows = DATA.nps.filter(r => matchesMulti(FILTER.ta,r.ta) && matchesMulti(FILTER.country,r.country) && matchesMulti(FILTER.segment,r.segment));
+  const avgNPS = Math.round(npsRows.reduce((a,b)=>a+b.nps,0)/Math.max(1,npsRows.length)) || 0;
+
+  const digital = DATA.digital;
+  const eng = digital.reduce((a,b)=>a+b.views+b.clicks,0);
+  const estCost = Math.max(1, (subset.length*45) + digital.length*600); // mock
+  const roiPct = Math.round(((totalInteractions*0.4 + eng*0.6) / estCost) * 100);
+
+  const qualAvg = Math.round(DATA.foundational.reduce((a,b)=>a+b.quality,0)/DATA.foundational.length);
+  const complianceBase = Math.min(99, Math.max(50, Math.round(qualAvg - 3 + Math.random()*6)));
+
+  kpiWrap.append(
+    kpi("Total interactions (sum)", fmt(totalInteractions), Math.round((Math.random()*12)-4)),
+    kpi("Average NPS", avgNPS, Math.round((Math.random()*8)-3), npsColor(avgNPS)),
+    kpi("ROI estimate", roiPct+"%", Math.round((Math.random()*10)-5), pctColor(Math.min(100,roiPct))),
+    kpi("Compliance pass rate (est.)", complianceBase+"%", Math.round((Math.random()*6)-3), pctColor(complianceBase))
+  );
+  view.append(kpiWrap);
+
+  const predCard = card("Predictive HCP engagement forecast (next quarter)","col-6");
+  const predCanvas = canvas(); predCard.append(predCanvas); view.append(predCard);
+  const byCountry = {}; subset.forEach(r=>{ byCountry[r.country]=(byCountry[r.country]||0)+r.interactions; });
+  const predLabels = Object.keys(byCountry).length? Object.keys(byCountry) : Countries;
+  const baseVals = predLabels.map(c=>byCountry[c]||randBetween(400,2000));
+  const predVals = baseVals.map(v=> Math.round(v*(1 + (Math.random()*0.15 - 0.02))));
+  makeChart(predCanvas.getContext('2d'), { type:'bar',
+    data:{ labels: predLabels, datasets:[{label:'Predicted interactions (Q+1)', data: predVals}]},
+    options:{ scales:{ y:{ beginAtZero:true } } }
+  });
+
+  const compCard = card("Competitive intelligence benchmark","col-6");
+  const compCanvas = canvas(); compCard.append(compCanvas); view.append(compCard);
+  const axes = ["Share of Voice","NPS","Event Presence","Digital Share","Content Resonance"];
+  const us = axes.map(()=>randBetween(60,90)); const comp = axes.map(()=>randBetween(50,85));
+  makeChart(compCanvas.getContext('2d'), { type:'radar',
+    data:{ labels: axes, datasets:[ {label:'Us', data:us}, {label:'Competitor', data:comp} ] },
+    options:{ scales:{ r:{ suggestedMin:0, suggestedMax:100 } } }
+  });
+
+  const sentCard = card("Sentiment trend & content resonance","col-7");
+  const sentCanvas = canvas(); sentCard.append(sentCanvas); view.append(sentCard);
+  const qLabels = DATA.progressByQuarter.map(x=>x.label);
+  const sentiment = qLabels.map((_,i)=> 60 + Math.round(Math.sin(i/2)*10 + Math.random()*4));
+  makeChart(sentCanvas.getContext('2d'), { type:'line',
+    data:{ labels:qLabels, datasets:[{label:'Sentiment (AI)', data:sentiment, borderWidth:2, tension:.25}]},
+    options:{ scales:{ y:{ beginAtZero:true, max:100 } } }
+  });
+
+  const resCard = card("Content resonance (top assets)","col-5");
+  const resCanvas = canvas(); resCard.append(resCanvas); view.append(resCard);
+  const scored = DATA.digital.map(r=>({name:r.asset, score: ((r.clicks+r.views)/(r.impressions||1)*100)})).sort((a,b)=>b.score-a.score).slice(0,7);
+  makeChart(resCanvas.getContext('2d'), { type:'bar',
+    data:{ labels:scored.map(x=>x.name), datasets:[{label:'Resonance %', data:scored.map(x=>x.score.toFixed(2))}]},
+    options:{ scales:{ y:{ beginAtZero:true } } }
+  });
+
+  const linkCard = card("KPI linkage: Training completion → NPS (country)","col-6");
+  const linkCanvas = canvas(); linkCard.append(linkCanvas); view.append(linkCard);
+  const byCountryCompletion = Countries.map(c=>{
+    const rows = DATA.learning.filter(r=>r.country===c);
+    const compl = rows.reduce((a,b)=>a+b.completion,0)/Math.max(1,rows.length);
+    const npsC = DATA.nps.filter(r=>r.country===c);
+    const npsAvg = npsC.length? (npsC.reduce((a,b)=>a+b.nps,0)/npsC.length) : randBetween(-10,60);
+    return {x: Math.round(compl), y: Math.round(npsAvg), country:c};
+  });
+  makeChart(linkCanvas.getContext('2d'), { type:'scatter',
+    data:{ datasets:[{label:'Country', data: byCountryCompletion}]},
+    options:{ plugins:{ tooltip:{ callbacks:{ label:(ctx)=> `${ctx.raw.country}: Completion ${ctx.raw.x}%, NPS ${ctx.raw.y}` } } },
+      scales:{ x:{ title:{display:true, text:'Training completion %'}, min:40, max:100 }, y:{ title:{display:true, text:'NPS'}, min:-40, max:80 } } }
+  });
+
+  const roiCard = card("ROI & cost efficiency by channel","col-6");
+  const roiCanvas = canvas(); roiCard.append(roiCanvas); view.append(roiCard);
+  const chAgg = {}; subset.forEach(r=>{ chAgg[r.channel]=(chAgg[r.channel]||0)+r.interactions; });
+  const channels = Object.keys(chAgg).length? Object.keys(chAgg) : ["F2F","Remote","CLM/IVA","Email","Web","Events"];
+  const points = channels.map(ch=>{
+    const interactions = chAgg[ch] || randBetween(400,4000);
+    const cost = Math.round(interactions * (0.6 + Math.random()*1.4));
+    const roi = Math.max(5, Math.round((interactions / Math.max(1,cost)) * 100));
+    return {x: cost, y: interactions, r: Math.max(5, Math.min(25, Math.round(roi/4))), label: `${ch} (ROI ${roi}%)`};
+  });
+  makeChart(roiCanvas.getContext('2d'), { type:'bubble',
+    data:{ datasets:[{ label:'Channel', data: points.map(p=>({x:p.x,y:p.y,r:p.r,label:p.label})) }]},
+    options:{ plugins:{ tooltip:{ callbacks:{ label:(c)=> `${c.raw.label} • Cost ${fmt(c.raw.x)} • Interactions ${fmt(c.raw.y)}` } } },
+      scales:{ x:{ title:{display:true, text:'Estimated cost (mock)'} }, y:{ title:{display:true, text:'Interactions'} } } }
+  });
+
+  /* Line chart: Compliance & governance health (trend) */
+  const compHealth = card("Compliance & governance health (trend)","col-12");
+  const compCanvas2 = canvas(110); compHealth.append(compCanvas2); view.append(compHealth);
+  const compTrend = DATA.progressByQuarter.map((_,i)=> Math.max(50, Math.min(99, complianceBase + Math.round(Math.sin(i/3)*4 + Math.random()*3))));
+  makeChart(compCanvas2.getContext('2d'), { type:'line',
+    data:{ labels: DATA.progressByQuarter.map(x=>x.label), datasets:[{label:'Compliance pass rate %', data:compTrend, borderWidth:2, tension:.25}] },
+    options:{ scales:{ y:{ beginAtZero:true, max:100 } } }
+  });
+}
+
+/* =========================
+   Boot (with “Bonus” polish)
+========================= */
+/* Auto-collapse on first load for narrow screens */
+try{
+  if (!localStorage.getItem("sidebarCollapsed") && window.matchMedia && window.matchMedia("(max-width: 900px)").matches) {
+    localStorage.setItem("sidebarCollapsed","1");
+  }
+}catch{}
+
+/* Build menu (menu.js exposes setupNav/updateActiveNav) and render */
+function __initApp(){
+  if (typeof setupNav === 'function') setupNav();
+  if (typeof updateActiveNav === 'function') updateActiveNav();
+  buildMultiFilters();
+  route();
+  window.addEventListener("hashchange", route);
+  // Filters section collapse/expand
+  try{
+    const hr = document.querySelector('.header-right');
+    const btn = document.querySelector('.filters-toggle');
+    if (hr && btn){
+      const setState = ()=>{
+        const expanded = !hr.classList.contains('collapsed');
+        btn.setAttribute('aria-expanded', String(expanded));
+        const pm = btn.querySelector('.pm'); if (pm) pm.textContent = expanded? '−' : '+';
+        btn.title = expanded? 'Hide filters' : 'Show filters';
+      };
+      // default collapsed
+      hr.classList.add('collapsed');
+      setState();
+  btn.addEventListener('click', ()=>{ 
+        hr.classList.toggle('collapsed'); 
+        setState(); 
+        // When collapsing the header filters, close any open dropdowns
+        const isCollapsed = hr.classList.contains('collapsed');
+        if (isCollapsed) {
+          try { document.querySelectorAll('#filtersRow details[open]').forEach(d=> d.removeAttribute('open')); } catch {}
+        }
+      });
+    }
+  }catch{}
+}
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', __initApp);
+} else {
+  __initApp();
+}
+</script>
+
+<!-- Load the modular sub-page for "Library of Congresses" -->
+<script>
+/* Bridge so ROUTES.render points to external implementation if present */
+window.__extRenderLibrary = null;
+</script>
+<script src="renderLibrary.js"></script>
+<script>
+/* If the external file defined renderLibrary(), wire it to our stub */
+if (typeof renderLibrary === "function") {
+  window.__extRenderLibrary = renderLibrary;
+}
+</script>
+
+</body>
+</html>

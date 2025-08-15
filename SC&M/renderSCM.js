@@ -110,5 +110,3 @@
     window.ROUTES.push({ id: 'scm', title: 'SC&M — Supply Chain & Manufacturing', subtitle: 'Operational metrics', render: window.externalRenderSCM });
   }
 })();
-// SC&M module removed per undo request.
-// Original contents deleted to revert the Supply Chain & Manufacturing addition.

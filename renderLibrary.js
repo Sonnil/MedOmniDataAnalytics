@@ -1,47 +1,115 @@
-/** Full Library of Congresses renderer (async external module) **/
-window.externalRenderLibrary = async function(){
-  const $ = (s,r=document)=> r.querySelector(s);
-  const el = (t,c,h)=>{ const n=document.createElement(t); if(c) n.className=c; if(h!==undefined) n.innerHTML=h; return n };
-  const fmt = n=> Number(n).toLocaleString();
-  const view = $('#view'); if(!view) return;
-  view.innerHTML = '';
+/*** 3a) LIBRARY OF CONGRESSES (EVENT WEB ANALYTICS) ***/
+function renderLibrary(){
+  const view = clearView();
+  if (typeof buildMultiFilters === 'function') buildMultiFilters();
+  const routeMeta = findRouteById("library", window.ROUTES) || {title:"Library of Congresses", subtitle:"Event web analytics"};
+  $("#pageTitle").textContent = routeMeta.title;
+  $("#pageSubtitle").textContent = routeMeta.subtitle;
+  // use shared mmss helper
 
-  // Mock data derived from DATA if present
-  const EVENTS = (typeof DATA!=='undefined' && DATA.events)? DATA.events : [ {name:'ASCO', attendees:1200, insights:34}, {name:'ESMO', attendees:800, insights:22} ];
+  const base = DATA.events;
+  // Respect header Business Unit filter if set
+  const baseFiltered = base.filter(e => (e.business === undefined || (window.FILTER && FILTER.business && FILTER.business.size ? FILTER.business.has(e.business) : true)) );
+  const rows = baseFiltered.map(e=>{
+    const uniqueUsers = Math.max(Math.round(e.attendees*(0.25+Math.random()*0.35)),100);
+    const engagedSessions = Math.max(Math.round(uniqueUsers*(0.55+Math.random()*0.3)),50);
+    const pageViews = Math.max(engagedSessions + Math.round(engagedSessions*(0.8+Math.random()*1.6)), engagedSessions);
+    const firstVisits = Math.min(uniqueUsers, Math.round(uniqueUsers*(0.35+Math.random()*0.35)));
+    const fileDownloads = Math.round(engagedSessions*(0.08+Math.random()*0.22));
+    const avgEngTimeSec = Math.round(90+Math.random()*360);
+    return {name:e.name, business: e.business || '-', uniqueUsers, engagedSessions, pageViews, firstVisits, fileDownloads, avgEngTimeSec};
+  });
 
-  // Filters card
-  const fCard = el('div','card col-12'); fCard.append(el('h3','', 'Filters'));
-  const taSel = document.createElement('select'); taSel.innerHTML = '<option>All</option>' + (window.TAs||[]).map(t=>`<option>${t}</option>`).join('');
-  const countrySel = document.createElement('select'); countrySel.innerHTML = '<option>All</option>' + (window.Countries||[]).map(c=>`<option>${c}</option>`).join('');
-  const apply = el('button','btn','Apply'); const clear = el('button','btn secondary','Clear');
-  fCard.append(el('div','','Year: '), taSel, el('div','',' Country: '), countrySel, apply, clear);
-  view.append(fCard);
+  const kpiWrap = el("div","kpis col-12");
+  const sum = (k)=> rows.reduce((a,b)=>a+b[k],0);
+  const kUnique = sum("uniqueUsers");
+  const kEngaged = sum("engagedSessions");
+  const kViews = sum("pageViews");
+  const kFirst = sum("firstVisits");
+  const kFiles = sum("fileDownloads");
+  const avgTime = Math.round(rows.reduce((a,b)=>a+b.avgEngTimeSec,0)/rows.length);
 
-  // KPI row
-  const kRow = el('div','kpis col-12'); view.append(kRow);
-  function kpi(title,val){ return el('div','kpi', `<div class="small">${title}</div><div class="val">${val}</div>`); }
+  kpiWrap.append(
+    kpi("Unique Users (sum)", fmt(kUnique), Math.round((Math.random()*10)-3)),
+    kpi("Avg Engagement Time", mmss(avgTime), Math.round((Math.random()*6)-3)),
+    kpi("Engaged Sessions (sum)", fmt(kEngaged), Math.round((Math.random()*10)-4)),
+    kpi("Page Views (sum)", fmt(kViews), Math.round((Math.random()*12)-5)),
+  );
+  view.append(kpiWrap);
 
-  // Charts row
-  const c1 = el('div','card col-6'); c1.append(el('h3','','Library visits by event')); const c1cv = document.createElement('canvas'); c1cv.height=160; c1.append(c1cv); view.append(c1);
-  const c2 = el('div','card col-6'); c2.append(el('h3','','Engagement trend')); const c2cv = document.createElement('canvas'); c2cv.height=160; c2.append(c2cv); view.append(c2);
+  const kpiWrap2 = el("div","kpis col-12");
+  kpiWrap2.append(
+    kpi("First Visits (sum)", fmt(kFirst), Math.round((Math.random()*8)-4)),
+    kpi("File Downloads (sum)", fmt(kFiles), Math.round((Math.random()*8)-3)),
+    kpi("Engagement Rate (Engaged/Users)", `${Math.round((kEngaged/Math.max(1,kUnique))*100)}%`, 0),
+    kpi("Downloads / Engaged Session", `${(kFiles/Math.max(1,kEngaged)).toFixed(2)}`, 0)
+  );
+  view.append(kpiWrap2);
 
-  // Table
-  const tableCard = el('div','card col-12'); tableCard.append(el('h3','','Detail')); const table = el('table','table'); tableCard.append(table); view.append(tableCard);
+  const funnel = card("Engagement funnel","col-6");
+  const fCanvas = canvas(); funnel.append(fCanvas); view.append(funnel);
+  makeChart(fCanvas.getContext('2d'), {
+    type: 'bar',
+    data: { labels: ["Unique Users","Engaged Sessions","Page Views","File Downloads"],
+      datasets: [{ label: "Volume", data: [kUnique, kEngaged, kViews, kFiles] }] },
+    options: { indexAxis: 'y', scales: { x: { beginAtZero: true } } }
+  });
 
-  function render(){
-    const rows = EVENTS.map(e=>({ title:e.name, attendees:e.attendees, insights:e.insights }));
-    kRow.innerHTML=''; kRow.append(kpi('Total events', rows.length), kpi('Total attendees', fmt(rows.reduce((a,b)=>a+b.attendees,0))), kpi('Total insights', fmt(rows.reduce((a,b)=>a+b.insights,0))));
-    table.innerHTML = `<thead><tr><th>Event</th><th>Attendees</th><th>Insights</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${r.title}</td><td>${fmt(r.attendees)}</td><td>${r.insights}</td></tr>`).join('')}</tbody>`;
-    makeChart(c1cv.getContext('2d'), { type:'bar', data:{ labels: rows.map(r=>r.title), datasets:[{ label:'Attendees', data: rows.map(r=>r.attendees) }]}, options:{ scales:{ y:{ beginAtZero:true } } } });
-    makeChart(c2cv.getContext('2d'), { type:'line', data:{ labels: ['Q1','Q2','Q3','Q4'], datasets:[{ label:'Engagement', data:[randBetween(100,800), randBetween(200,900), randBetween(300,1000), randBetween(150,700)] }] } });
-  }
+  const grp = card("Users vs Engaged Sessions (by event)","col-6");
+  const gCanvas = canvas(); grp.append(gCanvas); view.append(grp);
+  makeChart(gCanvas.getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels: rows.map(r=>`[${r.business}] ${r.name}`),
+      datasets: [
+        { label: "Unique Users", data: rows.map(r=>r.uniqueUsers) },
+        { label: "Engaged Sessions", data: rows.map(r=>r.engagedSessions) }
+      ]
+    },
+    options: { scales: { y: { beginAtZero: true } } }
+  });
 
-  apply.addEventListener('click', ()=>{ render(); });
-  clear.addEventListener('click', ()=>{ taSel.value='All'; countrySel.value='All'; render(); });
+  const timeCard = card("Avg engagement time per session (mm:ss)","col-6");
+  const tCanvas = canvas(); timeCard.append(tCanvas); view.append(timeCard);
+  makeChart(tCanvas.getContext('2d'), {
+    type:'bar',
+    data: { labels: rows.map(r=>`[${r.business}] ${r.name}`), datasets:[{ label: "Avg Time (sec)", data: rows.map(r=>r.avgEngTimeSec) }] },
+    options: {
+      scales: { y: { beginAtZero:true } },
+      plugins: { tooltip: { callbacks: { label:(ctx)=> `${ctx.dataset.label}: ${mmss(ctx.parsed.y)}` } } }
+    }
+  });
 
-  render();
-};
+  const bub = card("Page Views vs Unique Users (bubble = File Downloads)","col-6");
+  const bCanvas = canvas(); bub.append(bCanvas); view.append(bub);
+  makeChart(bCanvas.getContext('2d'), {
+    type:'bubble',
+    data: { datasets: [{
+      label: "Event",
+      data: rows.map(r=>({ x: r.uniqueUsers, y: r.pageViews, r: Math.max(6, Math.min(24, Math.round(r.fileDownloads/50))), name: r.name, bu: r.business, dl: r.fileDownloads }))
+    }]},
+    options:{
+      plugins:{ tooltip:{ callbacks:{ label:(ctx)=> `${ctx.raw.bu} • ${ctx.raw.name} • Users ${fmt(ctx.raw.x)} • Views ${fmt(ctx.raw.y)} • Downloads ${fmt(ctx.raw.dl)}` } } },
+      scales:{ x:{ title:{display:true,text:"Unique Users"} }, y:{ title:{display:true,text:"Page Views"} } }
+    }
+  });
 
-if(typeof window.ROUTES !== 'undefined'){
-  const r = window.ROUTES.find(x=>x.id==='library'); if(r) r.render = window.externalRenderLibrary;
+  const tableCard = card("Detail — per event","col-12");
+  const tbl = el('table','table');
+  tbl.innerHTML = `<thead><tr>
+    <th>Event</th><th>Business Unit</th><th>Unique Users</th><th>Engaged Sessions</th><th>Page Views</th><th>First Visits</th><th>File Downloads</th><th>Avg Time</th>
+  </tr></thead>
+  <tbody>${
+    rows.map(r=>`<tr>
+      <td><span class="badge">${r.name}</span></td>
+      <td>${r.business}</td>
+      <td>${fmt(r.uniqueUsers)}</td>
+      <td>${fmt(r.engagedSessions)}</td>
+      <td>${fmt(r.pageViews)}</td>
+      <td>${fmt(r.firstVisits)}</td>
+      <td>${fmt(r.fileDownloads)}</td>
+      <td>${mmss(r.avgEngTimeSec)}</td>
+    </tr>`).join("")
+  }</tbody>`;
+  tableCard.append(tbl); view.append(tableCard);
 }
