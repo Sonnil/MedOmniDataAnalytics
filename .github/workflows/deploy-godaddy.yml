@@ -1,0 +1,33 @@
+name: Deploy to GoDaddy (FTP)
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Deploy via FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          # Example: '/public_html/' (must exist and end with a slash)
+          server-dir: ${{ secrets.FTP_REMOTE_DIR }}
+          local-dir: ./
+          exclude: |
+            **/.git*
+            **/.github/**
+            **/library-proxy/**
+            **/node_modules/**
+            **/*.lock
+            **/.ftp-deploy-sync-state.json
+            **/*.old.html
+            **/README*.md
+            **/.DS_Store
+          # dangerous-clean-slate: true
