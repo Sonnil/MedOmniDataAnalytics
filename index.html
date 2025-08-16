@@ -5,6 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Medical Affairs Analytics Demo</title>
 
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-DLCH9QE3MB"></script>
+<script>
+  // GA4 for SPA: disable automatic page_view and send on route changes
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){ dataLayer.push(arguments); }
+  gtag('js', new Date());
+  gtag('config', 'G-DLCH9QE3MB', { send_page_view: false });
+</script>
+
 <!-- Chart.js + date adapter will be lazy‑loaded on demand -->
 
 <!-- Optional: geo choropleth libs will be lazy‑loaded on demand -->
@@ -321,6 +331,14 @@ function route(){
   const r = findRouteById(routeId, ROUTES) || ROUTES[0];
   r.render();
   if (window.updateActiveNav) updateActiveNav();
+  // Track SPA page view in GA4
+  try{
+    if (window.gtag) {
+      const page_path = location.pathname + (location.hash || '');
+      const page_title = (r && r.title) || document.title || 'MedAffairs BI';
+      window.gtag('event', 'page_view', { page_path, page_title });
+    }
+  }catch{}
 }
 
 /* =========================
