@@ -248,4 +248,129 @@ function renderLibrary(){
   loadMore.addEventListener('click', ()=>{ if (!locState.hasMore) return; locState.page += 1; doSearch(false); });
   // Seed a quick demo search
   input.value = 'oncology'; locState.q = input.value.trim(); doSearch(true);
+
+  // ——— Congress.gov API — GTMC-related insights ———
+  const cgCard = card("Congress.gov — Policy & Market Insights","col-12");
+  const cgWrap = document.createElement('div');
+  Object.assign(cgWrap.style, { display:'flex', gap:'8px', alignItems:'center', flexWrap:'wrap' });
+  const keyInput = document.createElement('input');
+  keyInput.type = 'password';
+  keyInput.placeholder = 'Congress.gov API key (not stored)';
+  Object.assign(keyInput.style, { width:'260px', padding:'8px 10px', borderRadius:'8px', border:'1px solid #223055', background:'#0b142d', color:'#e2e8f0' });
+  const kwInput = document.createElement('input');
+  kwInput.type = 'text'; kwInput.placeholder = 'Keywords (e.g., health, drug, reimbursement)';
+  Object.assign(kwInput.style, { flex:'1 1 360px', minWidth:'260px', padding:'8px 10px', borderRadius:'8px', border:'1px solid #223055', background:'#0b142d', color:'#e2e8f0' });
+  const congSel = document.createElement('select');
+  Object.assign(congSel.style, { padding:'8px 10px', borderRadius:'8px', border:'1px solid #223055', background:'#0b142d', color:'#e2e8f0' });
+  ;[119,118,117,116,115].forEach(n=>{ const op=document.createElement('option'); op.value=String(n); op.textContent=`${n}th`; congSel.appendChild(op); });
+  const cgBtn = document.createElement('button');
+  cgBtn.className = 'btn'; cgBtn.type = 'button'; cgBtn.textContent = 'Fetch bills';
+  const cgMore = document.createElement('button');
+  cgMore.className = 'btn secondary'; cgMore.type = 'button'; cgMore.textContent = 'Load more';
+  cgMore.disabled = true;
+  const cgNote = document.createElement('div');
+  cgNote.className = 'small'; cgNote.textContent = 'Client-side fetch; enter your API key above.';
+  Object.assign(cgNote.style, { color:'#94a3b8' });
+  cgWrap.append(keyInput, congSel, kwInput, cgBtn, cgMore, cgNote);
+  const cgResults = document.createElement('div');
+  cgResults.style.marginTop = '10px';
+  const cgViz = document.createElement('div');
+  cgViz.style.marginTop = '12px';
+  const cgKpis = document.createElement('div'); cgKpis.className = 'kpis';
+  const cgCharts = document.createElement('div');
+  cgCharts.style.display = 'grid'; cgCharts.style.gridTemplateColumns = 'repeat(auto-fit, minmax(280px, 1fr))'; cgCharts.style.gap = '10px';
+  function mkCgCard(title){ const d=document.createElement('div'); d.className='card'; d.appendChild(el('h3','',title)); const cv=canvas(220); d.appendChild(cv); return {wrap:d, canvas:cv}; }
+  const cgChamber = mkCgCard('Bills by Chamber');
+  const cgPolicy = mkCgCard('Top Policy Areas');
+  const cgTimeline = mkCgCard('Introduced/Updated by Month');
+  cgCharts.append(cgChamber.wrap, cgPolicy.wrap, cgTimeline.wrap);
+  cgViz.append(cgKpis, cgCharts);
+  cgCard.append(cgWrap, cgResults, cgViz);
+  view.append(cgCard);
+
+  const CG = { apiKey:'', congress:119, page:0, pageSize:50, all:[], hasMore:true };
+  function buildCgUrl(){
+    const base = 'https://api.congress.gov/v3/bill';
+    const params = new URLSearchParams();
+    params.set('api_key', CG.apiKey);
+    params.set('format','json');
+    params.set('congress', String(CG.congress));
+    params.set('limit', String(CG.pageSize));
+    if (CG.page>0) params.set('offset', String(CG.page*CG.pageSize));
+    return `${base}?${params.toString()}`;
+  }
+  function safeArr(v){ return Array.isArray(v) ? v : (v ? [v] : []); }
+  function monthKey(s){ try{ const d = new Date(s); if (!isFinite(d)) return null; return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; }catch{ return null; } }
+  function updateCgVisuals(items, kw){
+    const q = (kw||'').toLowerCase().trim();
+    const filtered = !q ? items : items.filter(it=>{
+      try{
+        const hay = [it.title, it.policyArea?.name, ...(safeArr(it.subjects?.name))].join(' ').toLowerCase();
+        return hay.includes(q);
+      }catch{ return false; }
+    });
+    // KPIs
+    cgKpis.innerHTML = '';
+    const total = items.length; const hits = filtered.length;
+    const healthHits = filtered.filter(it=>{
+      try{ const s = [it.policyArea?.name, ...(safeArr(it.subjects?.name))].join(' ').toLowerCase(); return /health|drug|pharma|medic/i.test(s); }catch{ return false; }
+    }).length;
+    cgKpis.append( kpi('Bills (fetched)', fmt(total), 0), kpi('Matches (keywords)', fmt(hits), 0), kpi('Health-related (est.)', fmt(healthHits), 0) );
+    // Chamber breakdown
+    const byCh = {};
+    filtered.forEach(it=>{ const c = it.originChamber || it.chamber || 'Unknown'; byCh[c] = (byCh[c]||0)+1; });
+    makeChart(cgChamber.canvas.getContext('2d'), { type:'bar', data:{ labels:Object.keys(byCh), datasets:[{ label:'Bills', data:Object.values(byCh) }] }, options:{ scales:{ y:{ beginAtZero:true } } } });
+    // Policy areas
+    const byPa = {};
+    filtered.forEach(it=>{ const p = (it.policyArea && it.policyArea.name) ? it.policyArea.name : 'Unspecified'; byPa[p] = (byPa[p]||0)+1; });
+    const paTop = Object.entries(byPa).sort((a,b)=>b[1]-a[1]).slice(0,8);
+    makeChart(cgPolicy.canvas.getContext('2d'), { type:'bar', data:{ labels: paTop.map(([k])=>k), datasets:[{ label:'Bills', data: paTop.map(([,v])=>v) }] }, options:{ indexAxis:'y', scales:{ x:{ beginAtZero:true } } } });
+    // Timeline by month (introduced or latestAction)
+    const byM = {};
+    filtered.forEach(it=>{
+      const m = monthKey(it.updateDate || it.introducedDate || (it.latestAction && it.latestAction.actionDate));
+      if(!m) return; byM[m] = (byM[m]||0)+1;
+    });
+    const months = Object.keys(byM).sort();
+    makeChart(cgTimeline.canvas.getContext('2d'), { type:'line', data:{ labels: months, datasets:[{ label:'Bills', data: months.map(k=>byM[k]) }] }, options:{ scales:{ y:{ beginAtZero:true } } } });
+
+    // Results list (compact)
+    cgResults.innerHTML = '';
+    const list = document.createElement('div'); list.style.display='grid'; list.style.gridTemplateColumns = 'repeat(auto-fill, minmax(320px, 1fr))'; list.style.gap='10px';
+    filtered.slice(0,24).forEach(it=>{
+      const d = document.createElement('div'); d.className='card';
+      const title = it.title || `${it.billType || ''} ${it.number || ''}`;
+      const pa = (it.policyArea && it.policyArea.name) || 'Unspecified';
+      const ch = it.originChamber || it.chamber || '';
+      const dt = it.updateDate || (it.latestAction && it.latestAction.actionDate) || '';
+      const link = it.url || it.congressDotGovUrl || '';
+      d.innerHTML = `<div class="small" style="color:#94a3b8;">${dt} ${ch?`• ${ch}`:''} • ${pa}</div>
+                     <div style="font-weight:600;margin:2px 0 6px;">${title}</div>
+                     ${link?`<a class='btn secondary' href='${link}' target='_blank' rel='noopener'>Open</a>`:''}`;
+      list.appendChild(d);
+    });
+    cgResults.appendChild(list);
+  }
+
+  function fetchCg(reset=true){
+    if (!CG.apiKey){ cgResults.innerHTML = '<div class="small" style="color:#94a3b8;">Enter your Congress.gov API key</div>'; return; }
+    if (reset){ CG.page=0; CG.all=[]; CG.hasMore=true; }
+    const url = buildCgUrl();
+    if (reset) cgResults.innerHTML = '<div class="small" style="color:#94a3b8;">Loading…</div>';
+    cgMore.disabled = true; cgMore.textContent = 'Loading…';
+    fetch(url)
+      .then(r=> r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
+      .then(data => {
+        const items = (data && (data.bills || data.bill || data.results)) ? (data.bills || data.bill || data.results) : [];
+        if (!Array.isArray(items) || items.length===0) CG.hasMore = false;
+        CG.all = reset ? items.slice() : CG.all.concat(items);
+        updateCgVisuals(CG.all, kwInput.value);
+      })
+      .catch(err => { cgResults.innerHTML = `<div class=\"small\" style=\"color:#ef4444;\">Error: ${err.message || 'Request failed'} (CORS may block in browser)</div>`; })
+      .finally(()=>{ cgMore.disabled = !CG.hasMore; cgMore.textContent = CG.hasMore ? 'Load more' : 'No more results'; });
+  }
+
+  cgBtn.addEventListener('click', ()=>{ CG.apiKey = keyInput.value.trim(); CG.congress = Number(congSel.value)||CG.congress; fetchCg(true); });
+  cgMore.addEventListener('click', ()=>{ if (!CG.hasMore) return; CG.page += 1; fetchCg(false); });
+  try{ kwInput.addEventListener('input', debounce(()=> updateCgVisuals(CG.all, kwInput.value), 300)); }catch{}
 }
