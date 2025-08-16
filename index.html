@@ -751,13 +751,15 @@ function renderLibrary2(){
     // Panel
   const panel = document.createElement('div');
   panel.style.position='absolute';
-  // Center and enlarge so options fit without panel scrolling; no mobile special case needed
+  // Center horizontally and anchor near the top so it can expand vertically without scroll
   panel.style.left='50%';
-  panel.style.top='50%';
-  panel.style.transform='translate(-50%, -50%)';
-  panel.style.width='min(820px, 94vw)';
-  panel.style.maxWidth='94vw';
-  panel.style.maxHeight='90vh';
+  panel.style.top='calc(env(safe-area-inset-top, 0px) + 24px)';
+  panel.style.transform='translateX(-50%)';
+  // Expand panel to fit controls without horizontal scroll
+  panel.style.width='min(1200px, 98vw)';
+  panel.style.maxWidth='98vw';
+  panel.style.maxHeight='92vh';
+  // Let the panel auto-size vertically; avoid clipping content
   panel.style.overflow='visible';
   panel.style.background='#111827'; panel.style.color='#e5e7eb'; panel.style.border='1px solid #374151'; panel.style.borderRadius='12px'; panel.style.boxShadow='0 16px 48px rgba(0,0,0,0.45)';
     const ph = document.createElement('div'); ph.style.display='flex'; ph.style.justifyContent='space-between'; ph.style.alignItems='center'; ph.style.gap='8px'; ph.style.padding='8px 12px'; ph.style.borderBottom='1px solid #374151'; ph.style.background='#111827';
@@ -765,13 +767,17 @@ function renderLibrary2(){
     const x = document.createElement('button'); x.textContent='×'; x.setAttribute('aria-label','Close'); x.style.fontSize='1.2em'; x.style.lineHeight='1'; x.style.padding='4px 8px'; x.style.border='1px solid #4b5563'; x.style.borderRadius='6px'; x.style.background='#374151'; x.style.color='#e5e7eb';
     x.addEventListener('mouseenter', ()=>{ x.style.background='#4b5563'; }); x.addEventListener('mouseleave', ()=>{ x.style.background='#374151'; });
     ph.append(h,x);
-    const pc = document.createElement('div'); pc.style.padding='8px 12px'; pc.style.fontSize='0.95em'; pc.style.background='#111827'; pc.style.color='#e5e7eb';
+  const pc = document.createElement('div'); pc.style.padding='8px 12px'; pc.style.fontSize='0.95em'; pc.style.background='#111827'; pc.style.color='#e5e7eb';
+  // No internal scrolling — panel expands and filters wrap
+  pc.style.maxHeight = 'none';
+  pc.style.overflow = 'visible';
     // Build a fresh copy of the filters inside the panel
     const innerRow = document.createElement('div'); innerRow.className='filters-row';
-  // Keep all filters on a single top row (no wrap)
+  // Allow wrapping across multiple rows so all options are visible without scroll
   innerRow.style.display = 'flex';
-  innerRow.style.flexWrap = 'nowrap';
-  innerRow.style.gap = '10px';
+  innerRow.style.flexWrap = 'wrap';
+  innerRow.style.columnGap = '10px';
+  innerRow.style.rowGap = '10px';
   innerRow.style.alignItems = 'flex-start';
     buildLib2Filters(state, innerRow);
     // Clamp popover widths to viewport; filters stay in a single row
@@ -791,10 +797,32 @@ function renderLibrary2(){
     try{
       innerRow.style.color = '#e5e7eb';
       innerRow.querySelectorAll('summary').forEach(s=>{ s.style.background='#1f2937'; s.style.color='#e5e7eb'; s.style.border='1px solid #374151'; s.style.borderRadius='6px'; s.style.padding='6px 8px'; });
-  innerRow.querySelectorAll('.pop').forEach(p=>{ p.style.background='#111827'; p.style.border='1px solid #374151'; p.style.color='#e5e7eb'; p.style.maxHeight='none'; p.style.overflow='visible'; p.style.position='static'; p.style.top='auto'; p.style.left='auto'; p.style.boxShadow='none'; p.style.marginTop='6px'; });
+  innerRow.querySelectorAll('.pop').forEach(p=>{
+    p.style.background='#111827'; p.style.border='1px solid #374151'; p.style.color='#e5e7eb';
+    // Let dropdowns expand fully; no internal scroll
+    p.style.maxHeight='none'; p.style.overflow='visible';
+    // Render inline so it’s part of panel’s scroll flow
+    p.style.position='static'; p.style.top='auto'; p.style.left='auto'; p.style.boxShadow='none'; p.style.marginTop='6px';
+  });
       innerRow.querySelectorAll('input[type="search"], input[type="text"], input[type="date"]').forEach(inp=>{ inp.style.background='#1f2937'; inp.style.color='#e5e7eb'; inp.style.border='1px solid #4b5563'; });
       innerRow.querySelectorAll('button').forEach(b=>{ if (!b.classList.contains('x')){ b.style.background='#374151'; b.style.color='#e5e7eb'; b.style.border='1px solid #4b5563'; } });
       innerRow.querySelectorAll('label, .small').forEach(el=>{ el.style.color='#d1d5db'; });
+    }catch{}
+    // Ensure opened dropdowns (e.g., Dates) remain fully visible inside the panel
+    try{
+      innerRow.querySelectorAll('.filter details').forEach(d=>{
+        d.addEventListener('toggle', ()=>{
+          if (!d.open) return;
+          requestAnimationFrame(()=>{
+            const pop = d.querySelector('.pop');
+            if (!pop) return;
+            const pcRect = pc.getBoundingClientRect();
+            const popRect = pop.getBoundingClientRect();
+            if (popRect.bottom > pcRect.bottom) pc.scrollTop += (popRect.bottom - pcRect.bottom) + 8;
+            if (popRect.top < pcRect.top) pc.scrollTop += (popRect.top - pcRect.top) - 8;
+          });
+        });
+      });
     }catch{}
   // Add filters first, then chips (breadcrumbs) below the filters, then Clear all
   const panelChips = document.createElement('div');
@@ -825,14 +853,18 @@ function renderLibrary2(){
           const rect = d.getBoundingClientRect();
           const pop = d.querySelector('.pop');
           if (pop){
-      // In enlarged modal, force dropdowns to open downward and be wide enough
-      d.parentElement.classList.remove('drop-up');
-      pop.style.minWidth = '360px';
-      pop.style.maxWidth = '600px';
+  // Set width clamps and flip if needed for on-page filters
+  d.parentElement.classList.remove('drop-up');
+  pop.style.minWidth = '320px';
+  pop.style.maxWidth = Math.min(600, (window.innerWidth - 32)) + 'px';
       pop.style.whiteSpace = 'normal';
-      const popW = Math.max(360, pop.offsetWidth||0);
-      const wouldOverflowRight = (rect.left + popW) > (window.innerWidth - 24);
+  const popW = Math.max(320, pop.offsetWidth||0);
+  const wouldOverflowRight = (rect.left + popW) > (window.innerWidth - 16);
       if (wouldOverflowRight) d.parentElement.classList.add('align-right'); else d.parentElement.classList.remove('align-right');
+  // If opening downward would overflow bottom of viewport, flip to drop-up
+  const popRect = pop.getBoundingClientRect();
+  const willOverflowBottom = (popRect.bottom) > (window.innerHeight - 16);
+  if (willOverflowBottom) d.parentElement.classList.add('drop-up'); else d.parentElement.classList.remove('drop-up');
           }
         });
       } else {
