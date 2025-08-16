@@ -295,17 +295,163 @@ function renderMedical(){
       const countries = ChartGeo.topojson.feature(topology, topology.objects.countries).features;
       const byCountry = {}; subset.forEach(r=>{ byCountry[r.country]=(byCountry[r.country]||0)+r.interactions; });
       const nameMap = {US:"United States of America", UK:"United Kingdom", DE:"Germany", FR:"France", ES:"Spain", IT:"Italy", BR:"Brazil", JP:"Japan", CN:"China", CA:"Canada"};
+      const revNameMap = Object.fromEntries(Object.entries(nameMap).map(([k,v])=>[v,k]));
       const values = countries.map(f=>{
         const nm = f.properties.name;
         const demoKey = Object.keys(nameMap).find(k=>nameMap[k]===nm);
         return {feature:f, value: byCountry[demoKey]||0};
       });
-      makeChart(mapCanvas.getContext('2d'), {
+      const mapChart = makeChart(mapCanvas.getContext('2d'), {
         type:'choropleth',
         data:{ labels: values.map(v=>v.feature.properties.name), datasets:[{label:'Interactions', outline: ChartGeo.topojson.mesh(topology, topology.objects.countries, (a,b)=>a!==b), data: values}]},
         options:{ showOutline:true, showGraticule:true,
           scales:{ projection:{ axis:'x', projection:'equalEarth' }, color:{ axis:'x', quantize:5, legend:{position:'bottom'} } }
         }
+      });
+
+      // Click-to-popup: open a drill-through modal without changing page filters
+      const openMedicalDrill = (code)=>{
+        const cName = (window.CountryNameMap && window.CountryNameMap[code]) ? window.CountryNameMap[code] : (nameMap[code] || code);
+        const rows = subset.filter(r=> r.country === code);
+        if (!rows.length){ return; }
+
+        const overlay = document.createElement('div');
+        overlay.style.position = 'fixed'; overlay.style.inset = '0'; overlay.style.background = 'rgba(0,0,0,0.7)'; overlay.style.zIndex = '1000';
+        overlay.setAttribute('role','dialog'); overlay.setAttribute('aria-modal','true'); overlay.setAttribute('aria-label', `Drill-through: ${cName}`);
+        const modal = document.createElement('div');
+        modal.style.position='absolute'; modal.style.left='50%'; modal.style.top='50%'; modal.style.transform='translate(-50%, -50%)';
+        modal.style.width='min(1000px, 96vw)'; modal.style.maxWidth='96vw'; modal.style.maxHeight='92vh'; modal.style.overflow='hidden';
+        modal.style.background='#111827'; modal.style.color='#e5e7eb'; modal.style.border='1px solid #374151'; modal.style.borderRadius='12px'; modal.style.boxShadow='0 16px 48px rgba(0,0,0,0.45)';
+        modal.style.display='flex'; modal.style.flexDirection='column';
+        const header = document.createElement('div');
+        header.style.display='flex'; header.style.justifyContent='space-between'; header.style.alignItems='center'; header.style.gap='8px'; header.style.padding='10px 14px'; header.style.borderBottom='1px solid #374151'; header.style.background='#111827';
+        const title = document.createElement('h3'); title.textContent = `Drill-through: ${cName}`; title.style.margin='0'; title.style.fontSize='1.05em'; title.style.color = '#e5e7eb';
+        const closeBtn = document.createElement('button'); closeBtn.textContent = '\u00d7'; closeBtn.setAttribute('aria-label','Close'); closeBtn.style.fontSize='1.2em'; closeBtn.style.lineHeight='1'; closeBtn.style.padding='4px 10px'; closeBtn.style.border='1px solid #4b5563'; closeBtn.style.borderRadius='6px'; closeBtn.style.background='#374151'; closeBtn.style.color='#e5e7eb';
+        closeBtn.addEventListener('mouseenter', ()=>{ closeBtn.style.background='#4b5563'; });
+        closeBtn.addEventListener('mouseleave', ()=>{ closeBtn.style.background='#374151'; });
+        header.append(title, closeBtn);
+        const body = document.createElement('div'); body.style.padding='10px 14px'; body.style.overflow='auto'; body.style.flex='1 1 auto'; body.style.background = '#111827'; body.style.color = '#e5e7eb';
+        const krow = el('div','kpis col-12'); krow.style.fontSize='0.95em';
+        const sum = (k)=> rows.reduce((a,b)=>a+(b[k]||0),0);
+        const avg = (k)=> rows.length ? (rows.reduce((a,b)=>a+(b[k]||0),0)/rows.length) : 0;
+        krow.append(
+          kpi('Total interactions', fmt(sum('interactions')), 0),
+          kpi('Avg call duration (min)', avg('avgCallMin').toFixed(1), 0),
+          kpi('Avg call freq / HCP (qtr)', avg('freqPerHCP').toFixed(1), 0)
+        );
+        body.appendChild(krow);
+        const chCard = document.createElement('div'); chCard.style.marginTop='8px';
+        const chTitle = document.createElement('div'); chTitle.textContent = 'Channel mix'; chTitle.className='small'; chTitle.style.margin='4px 0'; chCard.appendChild(chTitle);
+        const chCv = document.createElement('canvas'); chCv.height = 140; chCard.appendChild(chCv);
+        const cAgg = {}; rows.forEach(r=>{ cAgg[r.channel] = (cAgg[r.channel]||0) + (r.interactions||0); });
+        try{ makeChart(chCv.getContext('2d'), { type:'bar', data:{ labels:Object.keys(cAgg), datasets:[{ label:'Interactions', data:Object.values(cAgg) }]}, options:{ indexAxis:'y', plugins:{ legend:{display:false} }, scales:{ x:{ beginAtZero:true } } } }); }catch{}
+        body.appendChild(chCard);
+  // (Data table moved to bottom)
+
+  // Channel breakdown (was TA)
+  const taSectionTitle = document.createElement('div'); taSectionTitle.textContent = 'Channel breakdown'; taSectionTitle.className='small'; taSectionTitle.style.margin='10px 0 6px 0'; body.appendChild(taSectionTitle);
+  const taHost = document.createElement('div'); body.appendChild(taHost);
+  const taCanvas = document.createElement('canvas'); taCanvas.height = 220; taHost.appendChild(taCanvas);
+  let taChart = null;
+        function aggByTA(){
+          // Now aggregates by Channel
+          const g = {};
+          rows.forEach(r=>{
+            const ch = r.channel || 'Unknown';
+            const o = g[ch] || (g[ch] = { inter:0, sumDur:0, sumFreq:0, n:0 });
+            o.inter += (r.interactions||0);
+            o.sumDur += (r.avgCallMin||0);
+            o.sumFreq += (r.freqPerHCP||0);
+            o.n += 1;
+          });
+          const labels = Object.keys(g).sort((a,b)=> (g[b].inter||0) - (g[a].inter||0));
+          const interactions = labels.map(l=> g[l].inter);
+          const avgDur = labels.map(l=> +(g[l].sumDur/Math.max(1,g[l].n)).toFixed(2));
+          const avgFreq = labels.map(l=> +(g[l].sumFreq/Math.max(1,g[l].n)).toFixed(2));
+          return { labels, interactions, avgDur, avgFreq };
+        }
+        function renderTATable(){
+          taHost.innerHTML='';
+          const { labels, interactions, avgDur, avgFreq } = aggByTA();
+          const tbl2 = document.createElement('table'); tbl2.className='table'; tbl2.style.fontSize='0.9em'; tbl2.style.background='transparent'; tbl2.style.color='#e5e7eb'; tbl2.style.width='100%';
+          tbl2.innerHTML = `<thead style="background:#1f2937;"><tr><th>TA</th><th>Total interactions</th><th>Avg call min</th><th>Avg freq / HCP</th></tr></thead><tbody>${labels.map((ta,i)=>`<tr><td>${ta}</td><td>${fmt(interactions[i]||0)}</td><td>${(avgDur[i]||0).toFixed(2)}</td><td>${(avgFreq[i]||0).toFixed(2)}</td></tr>`).join('')}</tbody>`;
+          try{ Array.from(tbl2.querySelectorAll('th, td')).forEach(c=>{ c.style.borderBottom='1px solid #374151'; c.style.padding='6px 8px'; }); }catch{}
+          taHost.appendChild(tbl2);
+        }
+        function renderTALine(){
+          taHost.innerHTML=''; taHost.appendChild(taCanvas); try{ if (taChart && taChart.destroy) { taChart.destroy(); taChart=null; } }catch{}
+            const { labels, interactions, avgDur, avgFreq } = aggByTA();
+            if (!labels.length){ taHost.appendChild(el('div','small','No TA data.')); return; }
+          const ctx = taCanvas.getContext('2d');
+            const colors = { inter:'#60a5fa', dur:'#a78bfa', freq:'#34d399' };
+            taChart = makeChart(ctx, {
+              type:'line',
+              data:{ labels, datasets:[
+                { type:'line', label:'Avg call min', data: avgDur, borderColor: colors.dur, backgroundColor: colors.dur, tension:0.2, pointRadius:3, pointHoverRadius:5, fill:false, yAxisID:'yAvg' },
+                { type:'line', label:'Avg freq / HCP', data: avgFreq, borderColor: colors.freq, backgroundColor: colors.freq, tension:0.2, pointRadius:3, pointHoverRadius:5, fill:false, yAxisID:'yAvg' }
+              ] },
+              options:{
+                responsive:true,
+                maintainAspectRatio:false,
+                interaction:{ mode:'nearest', intersect:false },
+                plugins:{ legend:{ labels:{ color:'#e5e7eb' }, position:'bottom' } },
+                scales:{
+                  x:{ type:'category', title:{ display:true, text:'Channel', color:'#e5e7eb' }, ticks:{ color:'#d1d5db' }, grid:{ color:'rgba(255,255,255,0.1)' } },
+                  yAvg:{ beginAtZero:true, title:{ display:true, text:'Avg (mins / freq per HCP)', color:'#e5e7eb' }, ticks:{ color:'#d1d5db' }, grid:{ color:'rgba(255,255,255,0.1)' } }
+                }
+              }
+            });
+        }
+  function renderTAMixed(){
+          taHost.innerHTML=''; taHost.appendChild(taCanvas); try{ if (taChart && taChart.destroy) { taChart.destroy(); taChart=null; } }catch{}
+          const { labels, interactions, avgDur, avgFreq } = aggByTA();
+          const ctx = taCanvas.getContext('2d');
+          const colors = { inter:'#60a5fa', dur:'#a78bfa', freq:'#34d399' };
+          taChart = makeChart(ctx, {
+            type:'bar',
+            data:{ labels, datasets:[
+              { type:'bar', label:'Total interactions', data:interactions, backgroundColor:colors.inter, borderColor:colors.inter, yAxisID:'yCount' },
+              { type:'line', label:'Avg call min', data:avgDur, borderColor:colors.dur, backgroundColor:colors.dur, tension:0.2, pointRadius:3, pointHoverRadius:5, fill:false, yAxisID:'yAvg' },
+              { type:'line', label:'Avg freq / HCP', data:avgFreq, borderColor:colors.freq, backgroundColor:colors.freq, tension:0.2, pointRadius:3, pointHoverRadius:5, fill:false, yAxisID:'yAvg' }
+            ]},
+            options:{ responsive:true, interaction:{ mode:'nearest', intersect:false }, plugins:{ legend:{ labels:{ color:'#e5e7eb' }, position:'bottom' } },
+              scales:{
+                 x:{ title:{ display:true, text:'Channel', color:'#e5e7eb' }, ticks:{ color:'#d1d5db' }, grid:{ color:'rgba(255,255,255,0.1)' } },
+                yCount:{ beginAtZero:true, title:{ display:true, text:'Total interactions', color:'#e5e7eb' }, ticks:{ color:'#d1d5db' }, grid:{ color:'rgba(255,255,255,0.1)' } },
+                yAvg:{ beginAtZero:true, position:'right', title:{ display:true, text:'Avg (mins / freq per HCP)', color:'#e5e7eb' }, ticks:{ color:'#d1d5db' }, grid:{ drawOnChartArea:false } }
+              }
+            }
+          });
+        }
+  // Default to Line view (buttons removed)
+  renderTALine();
+  // Simple table view (top records) at bottom
+  const tableWrap = document.createElement('div'); tableWrap.style.marginTop='8px'; tableWrap.style.maxHeight='40vh'; tableWrap.style.overflow='auto';
+  const tbl = document.createElement('table'); tbl.className='table'; tbl.style.fontSize='0.9em'; tbl.style.background='transparent'; tbl.style.color='#e5e7eb'; tbl.style.width='100%';
+  const topRows = [...rows].sort((a,b)=> (b.interactions||0) - (a.interactions||0)).slice(0,50);
+  tbl.innerHTML = `<thead style=\"background:#1f2937;\"><tr><th>Channel</th><th>TA</th><th>Interactions</th><th>Avg Call Min</th><th>Freq / HCP</th></tr></thead><tbody>${topRows.map(r=>`<tr><td>${r.channel||''}</td><td>${r.ta||''}</td><td>${fmt(r.interactions||0)}</td><td>${(r.avgCallMin||0).toFixed(1)}</td><td>${(r.freqPerHCP||0).toFixed(1)}</td></tr>`).join('')}</tbody>`;
+  try{ Array.from(tbl.querySelectorAll('th, td')).forEach(c=>{ c.style.borderBottom='1px solid #374151'; c.style.padding='6px 8px'; }); }catch{}
+  tableWrap.appendChild(tbl); body.appendChild(tableWrap);
+        modal.append(header, body); overlay.appendChild(modal);
+        const prevOverflow = document.body.style.overflow;
+        const close = ()=>{ try{ document.body.style.overflow = prevOverflow || ''; }catch{} overlay.remove(); };
+        overlay.addEventListener('click', (e)=>{ if (e.target===overlay) close(); });
+        closeBtn.addEventListener('click', (e)=>{ e.preventDefault(); close(); });
+        window.addEventListener('keydown', function escH(ev){ if (ev.key==='Escape'){ ev.preventDefault(); close(); window.removeEventListener('keydown', escH); } });
+        document.body.appendChild(overlay);
+        setTimeout(()=>{ try{ document.body.style.overflow='hidden'; }catch{} }, 0);
+        try{ closeBtn.focus({ preventScroll: true }); }catch{}
+      };
+
+      mapCanvas.addEventListener('click', (evt)=>{
+        try{
+          const els = mapChart.getElementsAtEventForMode(evt, 'nearest', { intersect:true }, true);
+          if (!els || !els.length) return;
+          const idx = els[0].index;
+          const name = mapChart.data.labels[idx];
+          const code = revNameMap[name] || name;
+          if (code) openMedicalDrill(code);
+        }catch{}
       });
     })
     .catch(()=> { mapCard.append(el('div','small','(Map unavailable offline)')); });

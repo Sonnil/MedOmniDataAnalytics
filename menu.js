@@ -19,6 +19,7 @@
     if (!app) return;
     app.classList.toggle("sidebar-collapsed", !!collapsed);
   updateToggleLabel();
+  updateToggleIcon();
   positionToggleForState(!!collapsed);
   }
 
@@ -171,11 +172,12 @@
     bar.className = "sidebar-top";
     bar.innerHTML = `
       <button id="sideToggleBtn" class="btn side-toggle" type="button" aria-label="Toggle menu" aria-pressed="false">
-        <span class="hamburger" aria-hidden="true">☰</span>
+  <span class="hamburger" aria-hidden="true"></span>
         <span class="btn-label">Menu</span>
       </button>
     `;
     aside.insertBefore(bar, aside.firstChild);
+
   }
 
   function updateToggleAria() {
@@ -195,15 +197,34 @@
     }
   }
 
+  function updateToggleIcon(){
+    const app = $(".app");
+    const btn = $("#sideToggleBtn");
+    if (!btn || !app) return;
+    const ic = btn.querySelector('.hamburger');
+    if (!ic) return;
+    const collapsed = app.classList.contains('sidebar-collapsed');
+  ic.innerHTML = triangleSvg(collapsed ? 'right' : 'left');
+  }
+
+  function triangleSvg(direction){
+    // Simple filled triangle pointing left/right within a 24x24 viewBox
+    // Right: points (8,6) (18,12) (8,18); Left: points (16,6) (6,12) (16,18)
+    const pts = direction === 'left' ? '16,6 6,12 16,18' : '8,6 18,12 8,18';
+    return `<svg viewBox="0 0 24 24" width="18" height="18" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><polygon points="${pts}" fill="currentColor"/></svg>`;
+  }
+
   // Ensure the toggle floats above all visuals when collapsed
   function positionToggleForState(collapsed){
     const btn = $("#sideToggleBtn");
-    if (!btn) return;
+  if (!btn) return;
     if (collapsed){
       btn.style.position = 'fixed';
-      btn.style.left = '12px';
-      // place just under the sticky header; adjust if header height changes
-      btn.style.top = '96px';
+  // Center the button on the left edge so only 50% shows inside the viewport
+  btn.style.left = 'env(safe-area-inset-left, 0px)';
+  // center vertically
+  btn.style.top = '50%';
+  btn.style.transform = 'translate(-50%, -50%)';
       btn.style.zIndex = '2147483647';
       btn.style.width = '44px';
       btn.style.height = '44px';
@@ -212,11 +233,36 @@
       btn.style.display = 'inline-flex';
       btn.style.alignItems = 'center';
       btn.style.justifyContent = 'center';
+      // Shift the inner triangle icon inward so it stays fully visible
+      try {
+        const ic = btn.querySelector('.hamburger');
+        if (ic) { ic.style.marginLeft = '12px'; }
+      } catch {}
+      // Hide the label in this floating mode
+      try { const label = btn.querySelector('.btn-label'); if (label) label.style.display = 'none'; } catch {}
     } else {
-      // remove inline overrides to fallback to normal sidebar styles
-      btn.removeAttribute('style');
-      // keep the label visibility in sync after reset
-      updateToggleLabel();
+      // Float at the right edge of the expanded sidebar; half visible in content
+      btn.style.position = 'fixed';
+      btn.style.left = 'calc(var(--aside) + env(safe-area-inset-left, 0px))';
+      btn.style.top = '50%';
+      btn.style.transform = 'translate(-50%, -50%)';
+      btn.style.zIndex = '2147483647';
+      btn.style.width = '44px';
+      btn.style.height = '44px';
+      btn.style.padding = '0';
+      btn.style.borderRadius = '999px';
+      btn.style.display = 'inline-flex';
+      btn.style.alignItems = 'center';
+      btn.style.justifyContent = 'center';
+      // In expanded state, center the triangle inside the circle
+      try {
+        const ic = btn.querySelector('.hamburger');
+        if (ic) { ic.style.marginLeft = ''; }
+      } catch {}
+      // Hide the label in this floating mode
+      try { const label = btn.querySelector('.btn-label'); if (label) label.style.display = 'none'; } catch {}
+      // Ensure icon direction reflects expanded state
+      updateToggleIcon();
     }
   }
 
@@ -250,13 +296,23 @@
 
   // Public API
   window.setupNav = function setupNav() {
+  // Default to collapsed if not set (keeps menu minimal by default)
+  try { if (localStorage.getItem(STORAGE_KEY) === null) localStorage.setItem(STORAGE_KEY, '1'); } catch {}
+  // Remove any previously injected rail element
+  try { const oldRail = document.getElementById('sideToggleRail'); if (oldRail) oldRail.remove(); } catch {}
     ensureSidebarToggle();
     renderNav(window.ROUTES || []);
     applyCollapsedClass(getCollapsed());
     updateToggleAria();
-  // Also enforce toggle position on load
+  // Also enforce toggle position and icon on load
   positionToggleForState(getCollapsed());
+  updateToggleIcon();
     attachHandlers();
+    // Keep the rail height in sync with header on resize
+    try {
+      window.addEventListener('resize', ()=> positionToggleForState(getCollapsed()));
+      window.addEventListener('orientationchange', ()=> positionToggleForState(getCollapsed()));
+    } catch {}
   };
 
   window.updateActiveNav = function updateActiveNav() {

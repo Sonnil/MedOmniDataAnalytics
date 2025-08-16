@@ -193,6 +193,40 @@ function ensureGeoLibs(){
   ]));
 }
 
+// Ensure ECharts + echarts-gl (for interactive 3D globe)
+function ensureEChartsGl(){
+  if (window.echarts && (window.echarts.gl || (window.echarts._disposed === false))) return Promise.resolve();
+  return Promise.all([
+    loadScriptOnce('https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js', 'echarts'),
+    loadScriptOnce('https://cdn.jsdelivr.net/npm/echarts-gl@2/dist/echarts-gl.min.js', 'echarts-gl')
+  ]);
+}
+
+// Load world GeoJSON to color countries on the globe
+function loadWorldGeo(){
+  if (window.__worldGeo) return Promise.resolve(window.__worldGeo);
+  const url = 'https://fastly.jsdelivr.net/npm/echarts-countries-js@1/dist/countries/world.json';
+  return fetch(url).then(r=>r.json()).then(g=>{ window.__worldGeo = g; return g; }).catch(()=>null);
+}
+
+// Google Maps JS API loader (expects window.GMAPS_API_KEY to be set by host)
+function ensureGoogleMaps(){
+  if (window.google && window.google.maps) return Promise.resolve();
+  const key = window.GMAPS_API_KEY || (window.__GMAPS_KEY);
+  if (!key) return Promise.reject(new Error('no-gmaps-key'));
+  if (window.__googleMapsPromise) return window.__googleMapsPromise;
+  window.__GMAPS_KEY = key;
+  window.__googleMapsPromise = new Promise((resolve, reject)=>{
+    const s = document.createElement('script');
+    s.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&v=quarterly&libraries=visualization`;
+    s.async = true; s.defer = true;
+    s.onload = ()=> resolve();
+    s.onerror = (e)=> reject(e);
+    document.head.appendChild(s);
+  });
+  return window.__googleMapsPromise;
+}
+
 function kpi(title, value, delta=0, valColor){
   const d = el('div','kpi');
   d.innerHTML = `<div class="small">${title}</div>

@@ -175,9 +175,9 @@ main{padding:20px}
 .app.sidebar-collapsed #sideToggleBtn{
   position: fixed;
   left: max(12px, env(safe-area-inset-left, 0px) + 8px);
-  /* Anchor near the top (just below sticky header) with extra offset so the full circle is visible */
-  top: calc(env(safe-area-inset-top, 0px) + 96px);
-  transform: none;
+  /* Center vertically */
+  top: 50%;
+  transform: translateY(-50%);
   /* Ensure above maps/canvases and overlays */
   z-index: 2147483647; /* max practical */
   width: 44px;
@@ -389,17 +389,176 @@ function renderMedical(){
       const countries = ChartGeo.topojson.feature(topology, topology.objects.countries).features;
       const byCountry = {}; subset.forEach(r=>{ byCountry[r.country]=(byCountry[r.country]||0)+r.interactions; });
       const nameMap = {US:"United States of America", UK:"United Kingdom", DE:"Germany", FR:"France", ES:"Spain", IT:"Italy", BR:"Brazil", JP:"Japan", CN:"China", CA:"Canada"};
+      const revNameMap = Object.fromEntries(Object.entries(nameMap).map(([k,v])=>[v,k]));
       const values = countries.map(f=>{
         const nm = f.properties.name;
         const demoKey = Object.keys(nameMap).find(k=>nameMap[k]===nm);
         return {feature:f, value: byCountry[demoKey]||0};
       });
-      makeChart(mapCanvas.getContext('2d'), {
+      const mapChart = makeChart(mapCanvas.getContext('2d'), {
         type:'choropleth',
         data:{ labels: values.map(v=>v.feature.properties.name), datasets:[{label:'Interactions', outline: ChartGeo.topojson.mesh(topology, topology.objects.countries, (a,b)=>a!==b), data: values}]},
         options:{ showOutline:true, showGraticule:true,
           scales:{ projection:{ axis:'x', projection:'equalEarth' }, color:{ axis:'x', quantize:5, legend:{position:'bottom'} } }
         }
+      });
+
+      // Click-to-popup: open a drill-through modal without changing page filters
+      const openMedicalDrill = (code)=>{
+        // Resolve country name for title
+        const cName = (window.CountryNameMap && window.CountryNameMap[code]) ? window.CountryNameMap[code] : (nameMap[code] || code);
+        // Rows limited to clicked country within current on-page filters
+        const rows = subset.filter(r=> r.country === code);
+        if (!rows.length){ return; }
+
+        // Build modal overlay
+        const overlay = document.createElement('div');
+        overlay.style.position = 'fixed'; overlay.style.inset = '0'; overlay.style.background = 'rgba(0,0,0,0.7)'; overlay.style.zIndex = '1000';
+        overlay.setAttribute('role','dialog'); overlay.setAttribute('aria-modal','true'); overlay.setAttribute('aria-label', `Drill-through: ${cName}`);
+        // Modal container
+        const modal = document.createElement('div');
+        modal.style.position='absolute'; modal.style.left='50%'; modal.style.top='50%'; modal.style.transform='translate(-50%, -50%)';
+        modal.style.width='min(1000px, 96vw)'; modal.style.maxWidth='96vw'; modal.style.maxHeight='92vh'; modal.style.overflow='hidden';
+        modal.style.background='#111827'; modal.style.color='#e5e7eb'; modal.style.border='1px solid #374151'; modal.style.borderRadius='12px'; modal.style.boxShadow='0 16px 48px rgba(0,0,0,0.45)';
+        modal.style.display='flex'; modal.style.flexDirection='column';
+        // Header
+        const header = document.createElement('div');
+        header.style.display='flex'; header.style.justifyContent='space-between'; header.style.alignItems='center'; header.style.gap='8px'; header.style.padding='10px 14px'; header.style.borderBottom='1px solid #374151'; header.style.background='#111827';
+        const title = document.createElement('h3'); title.textContent = `Drill-through: ${cName}`; title.style.margin='0'; title.style.fontSize='1.05em'; title.style.color = '#e5e7eb';
+        const closeBtn = document.createElement('button'); closeBtn.textContent = '\u00d7'; closeBtn.setAttribute('aria-label','Close'); closeBtn.style.fontSize='1.2em'; closeBtn.style.lineHeight='1'; closeBtn.style.padding='4px 10px'; closeBtn.style.border='1px solid #4b5563'; closeBtn.style.borderRadius='6px'; closeBtn.style.background='#374151'; closeBtn.style.color='#e5e7eb';
+        closeBtn.addEventListener('mouseenter', ()=>{ closeBtn.style.background='#4b5563'; });
+        closeBtn.addEventListener('mouseleave', ()=>{ closeBtn.style.background='#374151'; });
+        header.append(title, closeBtn);
+        // Body
+        const body = document.createElement('div'); body.style.padding='10px 14px'; body.style.overflow='auto'; body.style.flex='1 1 auto'; body.style.background = '#111827'; body.style.color = '#e5e7eb';
+        // KPIs
+        const krow = el('div','kpis col-12'); krow.style.fontSize='0.95em';
+        const sum = (k)=> rows.reduce((a,b)=>a+(b[k]||0),0);
+        const avg = (k)=> rows.length ? (rows.reduce((a,b)=>a+(b[k]||0),0)/rows.length) : 0;
+        krow.append(
+          kpi('Total interactions', fmt(sum('interactions')), 0),
+          kpi('Avg call duration (min)', avg('avgCallMin').toFixed(1), 0),
+          kpi('Avg call freq / HCP (qtr)', avg('freqPerHCP').toFixed(1), 0)
+        );
+        body.appendChild(krow);
+        // Channel mix for this country
+        const chCard = document.createElement('div'); chCard.style.marginTop='8px';
+        const chTitle = document.createElement('div'); chTitle.textContent = 'Channel mix'; chTitle.className='small'; chTitle.style.margin='4px 0'; chCard.appendChild(chTitle);
+        const chCv = document.createElement('canvas'); chCv.height = 140; chCard.appendChild(chCv);
+        const cAgg = {}; rows.forEach(r=>{ cAgg[r.channel] = (cAgg[r.channel]||0) + (r.interactions||0); });
+        try{
+          makeChart(chCv.getContext('2d'), { type:'bar', data:{ labels:Object.keys(cAgg), datasets:[{ label:'Interactions', data:Object.values(cAgg) }]}, options:{ indexAxis:'y', plugins:{ legend:{display:false} }, scales:{ x:{ beginAtZero:true } } } });
+        }catch{}
+        body.appendChild(chCard);
+  // (Data table moved to bottom)
+
+  // Channel breakdown (was TA)
+  const taSectionTitle = document.createElement('div'); taSectionTitle.textContent = 'Channel breakdown'; taSectionTitle.className='small'; taSectionTitle.style.margin='10px 0 6px 0'; body.appendChild(taSectionTitle);
+  const taHost = document.createElement('div'); body.appendChild(taHost);
+  // Reuse one canvas for smoother switching (Line/Mixed)
+  const taCanvas = document.createElement('canvas'); taCanvas.height = 220; taHost.appendChild(taCanvas);
+  let taChart = null;
+        function aggByTA(){
+          // Now aggregates by Channel
+          const g = {};
+          rows.forEach(r=>{
+            const ch = r.channel || 'Unknown';
+            const o = g[ch] || (g[ch] = { inter:0, sumDur:0, sumFreq:0, n:0 });
+            o.inter += (r.interactions||0);
+            o.sumDur += (r.avgCallMin||0);
+            o.sumFreq += (r.freqPerHCP||0);
+            o.n += 1;
+          });
+          const labels = Object.keys(g).sort((a,b)=> (g[b].inter||0) - (g[a].inter||0));
+          const interactions = labels.map(l=> g[l].inter);
+          const avgDur = labels.map(l=> +(g[l].sumDur/Math.max(1,g[l].n)).toFixed(2));
+          const avgFreq = labels.map(l=> +(g[l].sumFreq/Math.max(1,g[l].n)).toFixed(2));
+          return { labels, interactions, avgDur, avgFreq };
+        }
+        function renderTATable(){
+          taHost.innerHTML='';
+          const { labels, interactions, avgDur, avgFreq } = aggByTA();
+          const tbl2 = document.createElement('table'); tbl2.className='table'; tbl2.style.fontSize='0.9em'; tbl2.style.background='transparent'; tbl2.style.color='#e5e7eb'; tbl2.style.width='100%';
+          tbl2.innerHTML = `<thead style="background:#1f2937;"><tr><th>TA</th><th>Total interactions</th><th>Avg call min</th><th>Avg freq / HCP</th></tr></thead><tbody>${labels.map((ta,i)=>`<tr><td>${ta}</td><td>${fmt(interactions[i]||0)}</td><td>${(avgDur[i]||0).toFixed(2)}</td><td>${(avgFreq[i]||0).toFixed(2)}</td></tr>`).join('')}</tbody>`;
+          try{ Array.from(tbl2.querySelectorAll('th, td')).forEach(c=>{ c.style.borderBottom='1px solid #374151'; c.style.padding='6px 8px'; }); }catch{}
+          taHost.appendChild(tbl2);
+        }
+        function renderTALine(){
+          taHost.innerHTML=''; taHost.appendChild(taCanvas); try{ if (taChart && taChart.destroy) { taChart.destroy(); taChart=null; } }catch{}
+            const { labels, interactions, avgDur, avgFreq } = aggByTA();
+            if (!labels.length){ taHost.appendChild(el('div','small','No TA data.')); return; }
+          const ctx = taCanvas.getContext('2d');
+            const colors = { inter:'#60a5fa', dur:'#a78bfa', freq:'#34d399' };
+            // Lines only: averages (remove Interactions line)
+            taChart = makeChart(ctx, {
+              type:'line',
+              data:{ labels, datasets:[
+                { type:'line', label:'Avg call min', data: avgDur, borderColor: colors.dur, backgroundColor: colors.dur, tension:0.2, pointRadius:3, pointHoverRadius:5, fill:false, yAxisID:'yAvg' },
+                { type:'line', label:'Avg freq / HCP', data: avgFreq, borderColor: colors.freq, backgroundColor: colors.freq, tension:0.2, pointRadius:3, pointHoverRadius:5, fill:false, yAxisID:'yAvg' }
+              ] },
+              options:{
+                responsive:true,
+                maintainAspectRatio:false,
+                interaction:{ mode:'nearest', intersect:false },
+                plugins:{ legend:{ labels:{ color:'#e5e7eb' }, position:'bottom' } },
+                scales:{
+                  x:{ type:'category', title:{ display:true, text:'Channel', color:'#e5e7eb' }, ticks:{ color:'#d1d5db' }, grid:{ color:'rgba(255,255,255,0.1)' } },
+                  yAvg:{ beginAtZero:true, title:{ display:true, text:'Avg (mins / freq per HCP)', color:'#e5e7eb' }, ticks:{ color:'#d1d5db' }, grid:{ color:'rgba(255,255,255,0.1)' } }
+                }
+              }
+            });
+        }
+        function renderTAMixed(){
+          taHost.innerHTML=''; taHost.appendChild(taCanvas); try{ if (taChart && taChart.destroy) { taChart.destroy(); taChart=null; } }catch{}
+          const { labels, interactions, avgDur, avgFreq } = aggByTA();
+          const ctx = taCanvas.getContext('2d');
+          const colors = { inter:'#60a5fa', dur:'#a78bfa', freq:'#34d399' };
+          taChart = makeChart(ctx, {
+            type:'bar',
+            data:{ labels, datasets:[
+              { type:'bar', label:'Total interactions', data:interactions, backgroundColor:colors.inter, borderColor:colors.inter, yAxisID:'yCount' },
+              { type:'line', label:'Avg call min', data:avgDur, borderColor:colors.dur, backgroundColor:colors.dur, tension:0.2, pointRadius:3, pointHoverRadius:5, fill:false, yAxisID:'yAvg' },
+              { type:'line', label:'Avg freq / HCP', data:avgFreq, borderColor:colors.freq, backgroundColor:colors.freq, tension:0.2, pointRadius:3, pointHoverRadius:5, fill:false, yAxisID:'yAvg' }
+            ]},
+            options:{ responsive:true, interaction:{ mode:'nearest', intersect:false }, plugins:{ legend:{ labels:{ color:'#e5e7eb' }, position:'bottom' } },
+              scales:{
+                x:{ title:{ display:true, text:'Channel', color:'#e5e7eb' }, ticks:{ color:'#d1d5db' }, grid:{ color:'rgba(255,255,255,0.1)' } },
+                yCount:{ beginAtZero:true, title:{ display:true, text:'Total interactions', color:'#e5e7eb' }, ticks:{ color:'#d1d5db' }, grid:{ color:'rgba(255,255,255,0.1)' } },
+                yAvg:{ beginAtZero:true, position:'right', title:{ display:true, text:'Avg (mins / freq per HCP)', color:'#e5e7eb' }, ticks:{ color:'#d1d5db' }, grid:{ drawOnChartArea:false } }
+              }
+            }
+          });
+        }
+  // Default to Line view (buttons removed)
+  renderTALine();
+  // Simple table view (top records) at bottom
+  const tableWrap = document.createElement('div'); tableWrap.style.marginTop='8px'; tableWrap.style.maxHeight='40vh'; tableWrap.style.overflow='auto';
+  const tbl = document.createElement('table'); tbl.className='table'; tbl.style.fontSize='0.9em'; tbl.style.background='transparent'; tbl.style.color='#e5e7eb'; tbl.style.width='100%';
+  const topRows = [...rows].sort((a,b)=> (b.interactions||0) - (a.interactions||0)).slice(0,50);
+  tbl.innerHTML = `<thead style="background:#1f2937;"><tr><th>Channel</th><th>TA</th><th>Interactions</th><th>Avg Call Min</th><th>Freq / HCP</th></tr></thead><tbody>${topRows.map(r=>`<tr><td>${r.channel||''}</td><td>${r.ta||''}</td><td>${fmt(r.interactions||0)}</td><td>${(r.avgCallMin||0).toFixed(1)}</td><td>${(r.freqPerHCP||0).toFixed(1)}</td></tr>`).join('')}</tbody>`;
+  try{ Array.from(tbl.querySelectorAll('th, td')).forEach(c=>{ c.style.borderBottom='1px solid #374151'; c.style.padding='6px 8px'; }); }catch{}
+  tableWrap.appendChild(tbl); body.appendChild(tableWrap);
+
+        modal.append(header, body); overlay.appendChild(modal);
+        const prevOverflow = document.body.style.overflow;
+        const close = ()=>{ try{ document.body.style.overflow = prevOverflow || ''; }catch{} overlay.remove(); };
+        overlay.addEventListener('click', (e)=>{ if (e.target===overlay) close(); });
+        closeBtn.addEventListener('click', (e)=>{ e.preventDefault(); close(); });
+        window.addEventListener('keydown', function escH(ev){ if (ev.key==='Escape'){ ev.preventDefault(); close(); window.removeEventListener('keydown', escH); } });
+        document.body.appendChild(overlay);
+        setTimeout(()=>{ try{ document.body.style.overflow='hidden'; }catch{} }, 0);
+        try{ closeBtn.focus({ preventScroll: true }); }catch{}
+      };
+
+      mapCanvas.addEventListener('click', (evt)=>{
+        try{
+          const els = mapChart.getElementsAtEventForMode(evt, 'nearest', { intersect:true }, true);
+          if (!els || !els.length) return;
+          const idx = els[0].index;
+          const name = mapChart.data.labels[idx];
+          const code = revNameMap[name] || name; // default to name if not mapped
+          if (code) openMedicalDrill(code);
+        }catch{}
       });
     })
   .catch(()=> { mapCard.append(el('div','small','(Map unavailable offline)')); });
@@ -882,12 +1041,9 @@ function renderLibrary2(){
       if (state.filters.congress.size && !state.filters.congress.has(r.congress)) return false;
       if (state.filters.ta.size && !state.filters.ta.has(r.ta)) return false;
   if (state.filters.product.size && !state.filters.product.has(r.product)) return false;
-  // Country filter: AND across both sources (map selections and checkbox filter)
-      // Country: union of dropdown Country filter and map selections
-      const hasCountryFilter = (state.filters.country && state.filters.country.size) || (state.selectedCountries && state.selectedCountries.size);
-      if (hasCountryFilter){
-        const union = new Set([...(state.filters.country||new Set()), ...(state.selectedCountries||new Set())]);
-        if (!union.has(r.country)) return false;
+  // Country filter: only honor the on-page Country dropdown; map clicks do not filter the page
+      if (state.filters.country && state.filters.country.size){
+        if (!state.filters.country.has(r.country)) return false;
       }
   // Business Unit (local) and also honor global business filter if set
   if (state.filters.business.size && !state.filters.business.has(r.business)) return false;
@@ -951,9 +1107,10 @@ function renderLibrary2(){
     resetSel.style.float = 'right';
     resetSel.style.marginRight = '8px';
     resetSel.textContent = 'Reset map selection';
-    resetSel.addEventListener('click', ()=>{
+  resetSel.addEventListener('click', ()=>{
       const doWork = ()=>{
         state.selectedCountries.clear();
+    try{ if (state.__refreshGMap) state.__refreshGMap(); }catch{}
         renderLib2Chips(state, state.chipsHost, state.filtersCard);
         updateLib2Content();
         try{ setLib2FiltersCount(); }catch{}
@@ -969,25 +1126,90 @@ function renderLibrary2(){
   // Insert button next to the title (reset selection)
   const h3 = mapCard.querySelector('h3'); if (h3) { h3.appendChild(resetSel); h3.style.position='relative'; }
     // Wrap canvases so we can overlay bubble layer
-    const mapWrap = document.createElement('div');
-    mapWrap.style.position = 'relative';
-    mapWrap.style.width = '100%';
-    const mapCv = canvas(200);
-  const bubbleCanvas = canvas(200);
-  bubbleCanvas.style.position = 'absolute';
-  bubbleCanvas.style.left = '0';
-  bubbleCanvas.style.top = '0';
-  bubbleCanvas.style.width = '100%';
-  bubbleCanvas.style.background = 'transparent';
-  // Let base map receive events unless we detect a bubble under cursor
-  bubbleCanvas.style.pointerEvents = 'none';
+  const mapWrap = document.createElement('div');
+  mapWrap.style.position = 'relative';
+  mapWrap.style.width = '100%';
+  const mapCv = canvas(160);
+  const bubbleCanvas = canvas(160);
+    bubbleCanvas.style.position = 'absolute';
+    bubbleCanvas.style.left = '0';
+    bubbleCanvas.style.top = '0';
+    bubbleCanvas.style.width = '100%';
+    bubbleCanvas.style.background = 'transparent';
+    // Let base map receive events unless we detect a bubble under cursor
+    bubbleCanvas.style.pointerEvents = 'none';
     mapWrap.append(mapCv, bubbleCanvas);
     mapCard.append(mapWrap);
     state.contentEl.append(mapCard);
+    // Try Google Maps first for smoother interactions; fall back to Chart.js choropleth if not available
+    try{
+      (function initGoogleMapIfPossible(){
+        // Needs window.GMAPS_API_KEY set at runtime; otherwise this will no-op and fallback will render
+        ensureGoogleMaps().then(()=>{
+          // Compute totals by country (same as choropleth baseline)
+          const byC = {}; rows.forEach(r=>{ byC[r.country] = (byC[r.country]||0) + r.uniqueUsers; });
+          // Hide Chart canvases and inject a Google Map div
+          try{ mapCv.style.display='none'; bubbleCanvas.style.display='none'; }catch{}
+          const gdiv = document.createElement('div');
+          gdiv.id = 'lib2GMap';
+          gdiv.style.height = '336px';
+          gdiv.style.borderRadius = '8px';
+          gdiv.style.overflow = 'hidden';
+          mapWrap.appendChild(gdiv);
+          const map = new google.maps.Map(gdiv, {
+            mapTypeId: 'terrain',
+            gestureHandling: 'greedy',
+            streetViewControl: false,
+            fullscreenControl: true,
+            mapTypeControl: false,
+          });
+          state.__useGMap = true;
+          state.__gmap = map;
+          const circles = new Map();
+          const coords = { US: [-98,39], UK: [-2,54], DE: [10,51], FR: [2,46], ES: [-4,40], IT: [12,42], BR: [-51,-10], JP: [138,37], CN: [104,35], CA: [-98,56] };
+          const vals = Object.keys(coords).map(code=>({ code, v: byC[code]||0, lng: coords[code][0], lat: coords[code][1] })).filter(x=> x.v>0);
+          const bounds = new google.maps.LatLngBounds();
+          let max = Math.max(1, ...vals.map(x=>x.v));
+          const scaleKm = 90 / Math.sqrt(max); // tuning factor for circle size
+          vals.forEach(x=>{
+            const center = { lat: x.lat, lng: x.lng };
+            bounds.extend(center);
+            const radiusMeters = Math.max(20000, Math.sqrt(x.v) * scaleKm * 1000);
+            const circle = new google.maps.Circle({
+              map,
+              center,
+              radius: radiusMeters,
+              strokeColor: '#fbbf24', strokeOpacity: 1, strokeWeight: 1.25,
+              fillColor: '#fbbf24', fillOpacity: 0.35,
+              clickable: true
+            });
+            circle.addListener('click', ()=>{
+              // Do not filter page; open drill modal only
+              state.lastSelectedCountry = x.code;
+              state.__openDrillForCountry = x.code;
+              try{ updateLib2Content(); }catch{}
+            });
+            circles.set(x.code, circle);
+          });
+          try{ map.fitBounds(bounds, { top:20, right:20, bottom:20, left:20 }); }catch{}
+          function refresh(){
+            circles.forEach((c, code)=>{
+              const sel = !!(state.selectedCountries && state.selectedCountries.has(code));
+              c.setOptions({ strokeColor: sel ? '#22d3ee' : '#fbbf24', fillColor: sel ? '#22d3ee' : '#fbbf24', fillOpacity: sel ? 0.45 : 0.35 });
+            });
+          }
+          state.__gcircles = circles;
+          state.__refreshGMap = refresh;
+          refresh();
+        }).catch(()=>{});
+      })();
+    }catch{}
+
     const ensureGeo = ensureGeoLibs();
-    const atlasUrl = 'https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json';
+  const atlasUrl = 'https://cdn.jsdelivr.net/npm/world-atlas@2/countries-50m.json';
     const atlasPromise = window.__atlasPromise || (window.__atlasPromise = fetch(atlasUrl).then(r=>r.json()).catch(()=>null));
     ensureGeo.then(()=> atlasPromise).then(topology=>{
+      if (state.__useGMap) return; // If Google Map rendered, skip Chart.js map
       if (!topology || !window.ChartGeo) { throw new Error('no-topology'); }
       const countries = ChartGeo.topojson.feature(topology, topology.objects.countries).features;
       const byC = {}; // total per country
@@ -1010,13 +1232,13 @@ function renderLibrary2(){
     return {feature:f, value: byC[k]||0, code:k};
   });
       // Simple choropleth (stable baseline)
-      const baseCtx = mapCv.getContext('2d');
+  const baseCtx = mapCv.getContext('2d');
       const baseChart = makeChart(baseCtx, {
         type:'choropleth',
         data:{ labels: values.map(v=>v.feature.properties.name), datasets:[{ label:'Active Users (Total)', outline: ChartGeo.topojson.mesh(topology, topology.objects.countries, (a,b)=>a!==b), data: values }]},
         options:{ showOutline:true, showGraticule:true,
           plugins:{ legend:{ position:'bottom' }, tooltip:{ callbacks:{ label:(ctx)=>{ const v = ctx.raw && ctx.raw.value ? ctx.raw.value : 0; return `Total Active Users: ${fmt(v)}`; } } } },
-          scales:{ projection:{ axis:'x', projection:'equalEarth' }, color:{ axis:'x', quantize:5, legend:{position:'bottom'} } }
+          scales:{ projection:{ axis:'x', projection:'naturalEarth1' }, color:{ axis:'x', quantize:6, legend:{position:'bottom'} } }
         }
       });
       // Plugin to highlight selected countries with a bright border after draw
@@ -1050,7 +1272,8 @@ function renderLibrary2(){
         baseChart.update();
       }catch{}
 
-      // Build bubble overlay on separate canvas to avoid mixed-controller issues
+  // Build bubble overlay on separate canvas to avoid mixed-controller issues
+  if (state.__useGMap) return; // safety
   const coords = { US: [-98,39], UK: [-2,54], DE: [10,51], FR: [2,46], ES: [-4,40], IT: [12,42], BR: [-51,-10], JP: [138,37], CN: [104,35], CA: [-98,56] };
   const palette = ChartPalette;
       const topCongress = Object.entries(byCong).sort((a,b)=>b[1]-a[1]).slice(0,6).map(([k])=>k);
@@ -1105,7 +1328,7 @@ function renderLibrary2(){
   // Bubble overlay always visible
   bubbleCanvas.style.display = '';
       // Helpers to stabilize scroll around map re-render and handle selection
-      const stabilizeAroundMap = (fn)=>{
+  const stabilizeAroundMap = (fn)=>{
         try{
           const oldTop = mapCard.getBoundingClientRect().top;
           fn();
@@ -1122,18 +1345,12 @@ function renderLibrary2(){
           });
         }catch{ fn(); }
       };
-      const selectCountry = (code, cg, multi)=>{
+      const openCountryDrill = (code)=>{
         if (!code) return;
-        if (!multi) state.selectedCountries.clear();
-        if (state.selectedCountries.has(code)) state.selectedCountries.delete(code); else state.selectedCountries.add(code);
-        if (cg){
-          if (!multi) state.filters.congress.clear();
-          if (state.filters.congress.has(cg)) state.filters.congress.delete(cg); else state.filters.congress.add(cg);
-        }
         state.lastSelectedCountry = code;
         state.__openDrillForCountry = code;
-        stabilizeAroundMap(()=>{ renderLib2Chips(state, state.chipsHost, state.filtersCard); updateLib2Content(); });
-        try{ setLib2FiltersCount(); }catch{}
+        // Re-render to open modal, but do not change on-page filters or chips
+        stabilizeAroundMap(()=>{ updateLib2Content(); });
       };
       // Click base map to select country (nearest feature)
       mapCv.addEventListener('click', (evt)=>{
@@ -1144,8 +1361,7 @@ function renderLibrary2(){
           if (!els || !els.length) return;
           const idx = els[0].index ?? els[0].dataIndex;
           const code = values[idx] && values[idx].code;
-          const multi = evt.metaKey || evt.ctrlKey || evt.shiftKey;
-          selectCountry(code, null, multi);
+          openCountryDrill(code);
         }catch{}
       });
       // Click bubble to select country and (optionally) congress
@@ -1155,9 +1371,8 @@ function renderLibrary2(){
           const els = bubbleChart.getElementsAtEventForMode(evt, 'nearest', { intersect:true }, true);
           if (!els || !els.length) return;
           const raw = els[0].element && els[0].element.$context && els[0].element.$context.raw ? els[0].element.$context.raw : els[0].raw;
-          const code = raw && raw.code; const cg = raw && raw.congress;
-          const multi = evt.metaKey || evt.ctrlKey || evt.shiftKey;
-          selectCountry(code, cg, multi);
+          const code = raw && raw.code;
+          openCountryDrill(code);
         }catch{}
       });
       // Keep overlay intrinsic size in sync with base for accurate hit-testing
@@ -1575,22 +1790,12 @@ function renderLibrary2(){
         try{ renderLib2Chips(state, state.chipsHost, state.filtersCard); setLib2FiltersCount(); updateLib2Content(); }catch{}
         refreshKPIs(); renderView();
       });
-  // View controls (Table vs Line vs Mixed)
-      const vc = document.createElement('div');
-      vc.style.display='flex'; vc.style.justifyContent='flex-end'; vc.style.gap='8px'; vc.style.margin='8px 0';
-  const btnTable = document.createElement('button'); btnTable.textContent='Data View'; btnTable.className='btn secondary';
-      btnTable.style.background='#374151'; btnTable.style.color='#e5e7eb'; btnTable.style.border='1px solid #4b5563'; btnTable.style.borderRadius='6px'; btnTable.style.padding='4px 8px';
-      const btnLine = document.createElement('button'); btnLine.textContent='Line view'; btnLine.className='btn secondary';
-      btnLine.style.background='#374151'; btnLine.style.color='#e5e7eb'; btnLine.style.border='1px solid #4b5563'; btnLine.style.borderRadius='6px'; btnLine.style.padding='4px 8px';
-  const btnMixed = document.createElement('button'); btnMixed.textContent='Bar + Line'; btnMixed.className='btn secondary';
-  btnMixed.style.background='#374151'; btnMixed.style.color='#e5e7eb'; btnMixed.style.border='1px solid #4b5563'; btnMixed.style.borderRadius='6px'; btnMixed.style.padding='4px 8px';
-  vc.append(btnTable, btnLine, btnMixed); body.appendChild(vc);
-      const viewHost = document.createElement('div'); body.appendChild(viewHost);
-  let modalChart = null; let _persisted = (typeof localStorage!=='undefined' ? localStorage.getItem('lib2ModalView') : null); let modalMode = (_persisted==='table' || _persisted==='line' || _persisted==='mixed') ? _persisted : 'table';
-      const setActive = ()=>{
-        const activeStyle = (btn, on)=>{ btn.style.background = on ? '#4b5563' : '#374151'; };
-    activeStyle(btnTable, modalMode==='table'); activeStyle(btnLine, modalMode==='line'); activeStyle(btnMixed, modalMode==='mixed');
-      };
+  // Charts and data (show all on the same page)
+      const chartsWrap = document.createElement('div');
+      chartsWrap.style.display = 'flex';
+      chartsWrap.style.flexDirection = 'column';
+      chartsWrap.style.gap = '12px';
+      body.appendChild(chartsWrap);
       // Aggregate by congress (sum users/sessions/downloads; weighted avg time by sessions)
       function aggregateByCongress(){
         const byCg = {};
@@ -1615,23 +1820,22 @@ function renderLibrary2(){
         });
         return { labels, users, sessions, downloads, avgTimeMin };
       }
-      function renderTable(){
-        viewHost.innerHTML = '';
+      // Render helpers into given host
+      function renderTableInto(host){
         const cur = getDRows();
         const topRows = [...cur].sort((a,b)=> b.pageViews - a.pageViews).slice(0,12);
         const tbl2 = document.createElement('table'); tbl2.className = 'table'; tbl2.style.fontSize='0.9em'; tbl2.style.background='transparent'; tbl2.style.color='#e5e7eb'; tbl2.style.borderCollapse='collapse'; tbl2.style.width='100%';
         tbl2.innerHTML = `<thead style="background:#1f2937;"><tr><th>Congress</th><th>Content</th><th>Users</th><th>Page Views</th></tr></thead><tbody>${topRows.map(r=>`<tr><td>${r.congress}</td><td>${r.contentTitle}</td><td>${fmt(r.uniqueUsers)}</td><td>${fmt(r.pageViews)}</td></tr>`).join('')}</tbody>`;
         try{ Array.from(tbl2.querySelectorAll('th, td')).forEach(c=>{ c.style.borderBottom='1px solid #374151'; c.style.padding='6px 8px'; }); }catch{}
-        viewHost.appendChild(tbl2);
+        host.appendChild(tbl2);
       }
-      function renderLine(){
-        viewHost.innerHTML = '';
-        try{ if (modalChart && modalChart.destroy) { modalChart.destroy(); modalChart = null; } }catch{}
-  const { labels, users, sessions, downloads, avgTimeMin } = aggregateByCongress();
-        const cv = document.createElement('canvas'); cv.height = 200; viewHost.appendChild(cv);
+      function renderLineInto(host){
+        const { labels, users, sessions, downloads, avgTimeMin } = aggregateByCongress();
+        const title = document.createElement('div'); title.className='small'; title.textContent = 'Line chart: Users/Sessions/Downloads (+ Avg Time)'; title.style.margin='4px 0'; host.appendChild(title);
+        const cv = document.createElement('canvas'); cv.height = 200; host.appendChild(cv);
         const ctx = cv.getContext('2d');
         const colors = { users:'#60a5fa', sessions:'#34d399', downloads:'#fbbf24', time:'#a78bfa' };
-        modalChart = makeChart(ctx, {
+        makeChart(ctx, {
           type:'line',
           data:{ labels, datasets:[
             { label:'Unique Users', data: users, borderColor: colors.users, backgroundColor: colors.users, tension:0.2, pointRadius:3, pointHoverRadius:5, fill:false, yAxisID:'yCount' },
@@ -1649,50 +1853,6 @@ function renderLibrary2(){
                   label:(c)=>{
                     const ds = c.dataset;
                     if (ds.yAxisID === 'yTime'){
-                      // Convert minutes back to mm:ss for tooltip
-                      const totalSec = Math.round((c.parsed.y || 0) * 60);
-                      const m = Math.floor(totalSec/60), s = totalSec%60;
-                      const txt = `${m}:${String(s).padStart(2,'0')}`;
-                      return `${ds.label}: ${txt}`;
-                    }
-                    return `${ds.label}: ${fmt(c.parsed.y)}`;
-                  }
-                }
-              }
-            },
-            scales:{
-              x:{ title:{ display:true, text:'Congress', color:'#e5e7eb' }, ticks:{ color:'#d1d5db' }, grid:{ color:'rgba(255,255,255,0.1)' } },
-              yCount:{ beginAtZero:true, title:{ display:true, text:'Users / Sessions / Downloads', color:'#e5e7eb' }, ticks:{ color:'#d1d5db' }, grid:{ color:'rgba(255,255,255,0.1)' } },
-              yTime:{ beginAtZero:true, position:'right', title:{ display:true, text:'Avg Eng. Time (min)', color:'#e5e7eb' }, ticks:{ color:'#d1d5db' }, grid:{ drawOnChartArea:false } }
-            }
-          }
-        });
-      }
-      function renderMixed(){
-        viewHost.innerHTML = '';
-        try{ if (modalChart && modalChart.destroy) { modalChart.destroy(); modalChart = null; } }catch{}
-  const { labels, users, sessions, downloads, avgTimeMin } = aggregateByCongress();
-        const cv = document.createElement('canvas'); cv.height = 220; viewHost.appendChild(cv);
-        const ctx = cv.getContext('2d');
-        const colors = { users:'#60a5fa', sessions:'#34d399', downloads:'#fbbf24', time:'#a78bfa' };
-        modalChart = makeChart(ctx, {
-          type:'bar',
-          data:{ labels, datasets:[
-            { type:'bar', label:'Unique Users', data: users, backgroundColor: colors.users, borderColor: colors.users, yAxisID:'yCount' },
-            { type:'bar', label:'Engaged Sessions', data: sessions, backgroundColor: colors.sessions, borderColor: colors.sessions, yAxisID:'yCount' },
-            { type:'bar', label:'File Downloads', data: downloads, backgroundColor: colors.downloads, borderColor: colors.downloads, yAxisID:'yCount' },
-            { type:'line', label:'Avg Eng. Time (min)', data: avgTimeMin, borderColor: colors.time, backgroundColor: colors.time, tension:0.2, pointRadius:3, pointHoverRadius:5, fill:false, yAxisID:'yTime' }
-          ]},
-          options:{
-            responsive:true,
-            interaction:{ mode:'nearest', intersect:false },
-            plugins:{
-              legend:{ labels:{ color:'#e5e7eb' }, position:'bottom' },
-              tooltip:{
-                callbacks:{
-                  label:(c)=>{
-                    const ds = c.dataset;
-                    if (ds.type==='line' || ds.yAxisID==='yTime'){
                       const totalSec = Math.round((c.parsed.y || 0) * 60);
                       const m = Math.floor(totalSec/60), s = totalSec%60;
                       return `${ds.label}: ${m}:${String(s).padStart(2,'0')}`;
@@ -1710,11 +1870,66 @@ function renderLibrary2(){
           }
         });
       }
-      function renderView(){ setActive(); if (modalMode==='table') renderTable(); else if (modalMode==='line') renderLine(); else renderMixed(); }
-  btnTable.onclick = (e)=>{ e.preventDefault(); if (modalMode==='table') return; modalMode='table'; try{ localStorage.setItem('lib2ModalView', modalMode); }catch{} renderView(); };
-  btnLine.onclick = (e)=>{ e.preventDefault(); if (modalMode==='line') return; modalMode='line'; try{ localStorage.setItem('lib2ModalView', modalMode); }catch{} renderView(); };
-  btnMixed.onclick = (e)=>{ e.preventDefault(); if (modalMode==='mixed') return; modalMode='mixed'; try{ localStorage.setItem('lib2ModalView', modalMode); }catch{} renderView(); };
-      renderView();
+      function renderBarInto(host){
+        const { labels, users, sessions, downloads } = aggregateByCongress();
+        const title = document.createElement('div'); title.className='small'; title.textContent = 'Bar chart: Users/Sessions/Downloads'; title.style.margin='4px 0'; host.appendChild(title);
+        const cv = document.createElement('canvas'); cv.height = 200; host.appendChild(cv);
+        const ctx = cv.getContext('2d');
+        const colors = { users:'#60a5fa', sessions:'#34d399', downloads:'#fbbf24' };
+        makeChart(ctx, {
+          type:'bar',
+          data:{ labels, datasets:[
+            { label:'Unique Users', data: users, backgroundColor: colors.users, borderColor: colors.users },
+            { label:'Engaged Sessions', data: sessions, backgroundColor: colors.sessions, borderColor: colors.sessions },
+            { label:'File Downloads', data: downloads, backgroundColor: colors.downloads, borderColor: colors.downloads }
+          ]},
+          options:{
+            responsive:true,
+            interaction:{ mode:'nearest', intersect:false },
+            plugins:{ legend:{ labels:{ color:'#e5e7eb' }, position:'bottom' } },
+            scales:{
+              x:{ title:{ display:true, text:'Congress', color:'#e5e7eb' }, ticks:{ color:'#d1d5db' }, grid:{ color:'rgba(255,255,255,0.1)' } },
+              y:{ beginAtZero:true, title:{ display:true, text:'Count', color:'#e5e7eb' }, ticks:{ color:'#d1d5db' }, grid:{ color:'rgba(255,255,255,0.1)' } }
+            }
+          }
+        });
+      }
+      function renderMixedInto(host){
+        const { labels, users, sessions, downloads, avgTimeMin } = aggregateByCongress();
+        const title = document.createElement('div'); title.className='small'; title.textContent = 'Bar + Line: Users/Sessions/Downloads + Avg Time'; title.style.margin='4px 0'; host.appendChild(title);
+        const cv = document.createElement('canvas'); cv.height = 220; host.appendChild(cv);
+        const ctx = cv.getContext('2d');
+        const colors = { users:'#60a5fa', sessions:'#34d399', downloads:'#fbbf24', time:'#a78bfa' };
+        makeChart(ctx, {
+          type:'bar',
+          data:{ labels, datasets:[
+            { type:'bar', label:'Unique Users', data: users, backgroundColor: colors.users, borderColor: colors.users, yAxisID:'yCount' },
+            { type:'bar', label:'Engaged Sessions', data: sessions, backgroundColor: colors.sessions, borderColor: colors.sessions, yAxisID:'yCount' },
+            { type:'bar', label:'File Downloads', data: downloads, backgroundColor: colors.downloads, borderColor: colors.downloads, yAxisID:'yCount' },
+            { type:'line', label:'Avg Eng. Time (min)', data: avgTimeMin, borderColor: colors.time, backgroundColor: colors.time, tension:0.2, pointRadius:3, pointHoverRadius:5, fill:false, yAxisID:'yTime' }
+          ]},
+          options:{
+            responsive:true,
+            interaction:{ mode:'nearest', intersect:false },
+            plugins:{ legend:{ labels:{ color:'#e5e7eb' }, position:'bottom' } },
+            scales:{
+              x:{ title:{ display:true, text:'Congress', color:'#e5e7eb' }, ticks:{ color:'#d1d5db' }, grid:{ color:'rgba(255,255,255,0.1)' } },
+              yCount:{ beginAtZero:true, title:{ display:true, text:'Users / Sessions / Downloads', color:'#e5e7eb' }, ticks:{ color:'#d1d5db' }, grid:{ color:'rgba(255,255,255,0.1)' } },
+              yTime:{ beginAtZero:true, position:'right', title:{ display:true, text:'Avg Eng. Time (min)', color:'#e5e7eb' }, ticks:{ color:'#d1d5db' }, grid:{ drawOnChartArea:false } }
+            }
+          }
+        });
+      }
+      // Build sections
+      const barHost = document.createElement('div'); chartsWrap.appendChild(barHost);
+      renderBarInto(barHost);
+      const lineHost = document.createElement('div'); chartsWrap.appendChild(lineHost);
+      renderLineInto(lineHost);
+      const mixedHost = document.createElement('div'); chartsWrap.appendChild(mixedHost);
+      renderMixedInto(mixedHost);
+      const tableHost = document.createElement('div'); chartsWrap.appendChild(tableHost);
+      const tableTitle = document.createElement('div'); tableTitle.className='small'; tableTitle.textContent = 'Data table (top content by page views)'; tableTitle.style.margin='4px 0'; tableHost.appendChild(tableTitle);
+      renderTableInto(tableHost);
   modal.append(header, body); overlay.appendChild(modal);
   const prevOverflow = document.body.style.overflow;
   const close = ()=>{ try{ document.body.style.overflow = prevOverflow || ''; }catch{} overlay.remove(); if (state.contentEl){ try{ state.contentEl.focus({preventScroll:true}); }catch{} } };
