@@ -112,4 +112,74 @@ function renderLibrary(){
     </tr>`).join("")
   }</tbody>`;
   tableCard.append(tbl); view.append(tableCard);
+
+  // ——— Library of Congress API (public) — quick search demo ———
+  const locCard = card("Library of Congress API — Search demo","col-12");
+  const wrap = document.createElement('div');
+  Object.assign(wrap.style, { display:'flex', gap:'8px', alignItems:'center', flexWrap:'wrap' });
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.placeholder = 'Search LoC (e.g., oncology)';
+  Object.assign(input.style, { flex:'1 1 340px', minWidth:'240px', padding:'8px 10px', borderRadius:'8px', border:'1px solid #223055', background:'#0b142d', color:'#e2e8f0' });
+  const btn = document.createElement('button');
+  btn.className = 'btn'; btn.type='button'; btn.textContent = 'Search';
+  const note = document.createElement('div');
+  note.className = 'small'; note.textContent = 'Powered by loc.gov (JSON API)';
+  Object.assign(note.style, { color:'#94a3b8' });
+  wrap.append(input, btn, note);
+  const results = document.createElement('div');
+  results.style.marginTop = '10px';
+  locCard.append(wrap, results);
+  view.append(locCard);
+
+  function renderResults(items){
+    if (!items || !items.length){ results.innerHTML = '<div class="small" style="color:#94a3b8;">No results</div>'; return; }
+    const list = document.createElement('div');
+    list.style.display = 'grid';
+    list.style.gridTemplateColumns = 'repeat(auto-fill, minmax(260px, 1fr))';
+    list.style.gap = '10px';
+    items.forEach(it => {
+      const card = document.createElement('div');
+      card.className = 'card';
+      const title = it.title || it.collection || it.original_format || 'Untitled';
+      const date = it.date || it.created_published_date || '';
+      const url = it.url || it.website || it.id || '#';
+      let img = '';
+      try{
+        const im = (it.image_url && it.image_url[0]) || it.image || it.thumbnail || '';
+        if (im) img = `<img src="${im}" alt="thumbnail" style="width:100%;max-height:140px;object-fit:cover;border-radius:8px;">`;
+      }catch{}
+      card.innerHTML = `
+        ${img}
+        <div class="small" style="margin-top:6px;color:#94a3b8;">${date ? String(date) : ''}</div>
+        <div style="font-weight:600;margin:2px 0 6px;">${title}</div>
+        <a class="btn secondary" href="${url}" target="_blank" rel="noopener">Open</a>
+      `;
+      list.append(card);
+    });
+    results.innerHTML = '';
+    results.append(list);
+  }
+
+  function doSearch(q){
+    const query = (q||'').trim();
+    if (!query){ results.innerHTML = '<div class="small" style="color:#94a3b8;">Enter a term to search the Library of Congress</div>'; return; }
+    results.innerHTML = '<div class="small" style="color:#94a3b8;">Loading…</div>';
+    const url = `https://www.loc.gov/search/?q=${encodeURIComponent(query)}&fo=json&c=12`;
+    fetch(url)
+      .then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
+      .then(data => {
+        const items = (data && Array.isArray(data.results)) ? data.results : [];
+        renderResults(items);
+      })
+      .catch(err => {
+        results.innerHTML = `<div class="small" style="color:#ef4444;">Error: ${err && err.message ? err.message : 'Request failed'}</div>`;
+      });
+  }
+
+  btn.addEventListener('click', () => doSearch(input.value));
+  input.addEventListener('keydown', (e)=>{ if (e.key === 'Enter') doSearch(input.value); });
+  // Seed a quick demo search
+  input.value = 'oncology';
+  doSearch(input.value);
 }
