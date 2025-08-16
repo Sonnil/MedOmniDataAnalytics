@@ -127,9 +127,40 @@ function renderLibrary(){
   note.className = 'small'; note.textContent = 'Powered by loc.gov (JSON API)';
   Object.assign(note.style, { color:'#94a3b8' });
   wrap.append(input, btn, note);
-  const results = document.createElement('div');
-  results.style.marginTop = '10px';
-  locCard.append(wrap, results);
+    const results = document.createElement('div'); 
+    results.style.marginTop = '10px'; 
+    // Visualization area (KPIs and charts updated from results)
+    const viz = document.createElement('div'); 
+    viz.style.marginTop = '12px'; 
+    viz.innerHTML = ''; 
+  
+    // KPIs container 
+    const kpiRow = document.createElement('div'); 
+    kpiRow.className = 'kpis'; 
+    viz.appendChild(kpiRow); 
+  
+    // Charts containers 
+    const chWrap = document.createElement('div'); 
+    chWrap.style.display = 'grid'; 
+    chWrap.style.gridTemplateColumns = 'repeat(auto-fit, minmax(280px, 1fr))'; 
+    chWrap.style.gap = '10px'; 
+  
+    function mkChartCard(title){ 
+      const d = document.createElement('div'); 
+      d.className = 'card'; 
+      d.appendChild(el('h3','',title)); 
+      const cv = canvas(220); 
+      d.appendChild(cv); 
+      return {wrap:d, canvas:cv}; 
+    } 
+  
+    const yearCard = mkChartCard('Items by Year'); 
+    const fmtCard  = mkChartCard('Top Formats'); 
+    const subjCard = mkChartCard('Top Subjects'); 
+    chWrap.append(yearCard.wrap, fmtCard.wrap, subjCard.wrap); 
+  
+    viz.appendChild(chWrap); 
+    locCard.append(wrap, results, viz); 
   view.append(locCard);
 
   function renderResults(items){
@@ -159,6 +190,80 @@ function renderLibrary(){
     });
     results.innerHTML = '';
     results.append(list);
+    function yearFrom(any){
+      try{
+        const s = String(any||'');
+        const m = s.match(/(1[6-9]\d{2}|20\d{2})/); // 1600-2099
+        return m ? Number(m[1]) : null;
+      }catch{ return null; }
+    }
+
+    function tally(arr){
+      const map = new Map();
+      arr.forEach(v => { if(!v) return; const k = String(v); map.set(k, (map.get(k)||0)+1); });
+      return map;
+    }
+
+    function topEntries(map, n=8){
+      return Array.from(map.entries()).sort((a,b)=> b[1]-a[1]).slice(0,n);
+    }
+
+    function updateLoCVisuals(items){
+      // KPIs
+      kpiRow.innerHTML = '';
+      const total = items ? items.length : 0;
+      const withImg = (items||[]).filter(it => {
+        try{ return (it.image_url && it.image_url.length) || it.thumbnail; }catch{ return false; }
+      }).length;
+      const formatsSet = new Set();
+      (items||[]).forEach(it => {
+        const fmts = (Array.isArray(it.format) ? it.format : (it.format ? [it.format] : []));
+        fmts.forEach(f => formatsSet.add(String(f)));
+      });
+      kpiRow.append(
+        kpi('Items', fmt(total), 0),
+        kpi('With image', fmt(withImg), 0),
+        kpi('Distinct formats', fmt(formatsSet.size), 0)
+      );
+
+      // Years
+      const years = (items||[]).map(it => yearFrom(it.date || it.created_published_date)).filter(Boolean);
+      const yearTop = topEntries(tally(years), 10);
+      const yCtx = yearCard.canvas.getContext('2d');
+      makeChart(yCtx, {
+        type: 'bar',
+        data: { labels: yearTop.map(([y])=>y), datasets: [{ label:'Items', data: yearTop.map(([,c])=>c) }] },
+        options: { scales: { y: { beginAtZero:true } } }
+      });
+
+      // Formats
+      const fmts = [];
+      (items||[]).forEach(it => {
+        const arr = Array.isArray(it.format) ? it.format : (it.format ? [it.format] : (Array.isArray(it.original_format)? it.original_format : (it.original_format ? [it.original_format] : [])));
+        arr.forEach(v => fmts.push(v));
+      });
+      const fmtTop = topEntries(tally(fmts), 8);
+      const fCtx = fmtCard.canvas.getContext('2d');
+      makeChart(fCtx, {
+        type: 'bar',
+        data: { labels: fmtTop.map(([k])=>k), datasets: [{ label:'Count', data: fmtTop.map(([,c])=>c) }] },
+        options: { indexAxis:'y', scales: { x:{ beginAtZero:true } } }
+      });
+
+      // Subjects
+      const subs = [];
+      (items||[]).forEach(it => {
+        const arr = Array.isArray(it.subject) ? it.subject : (it.subject ? [it.subject] : []);
+        arr.forEach(v => subs.push(v));
+      });
+      const subjTop = topEntries(tally(subs), 8);
+      const sCtx = subjCard.canvas.getContext('2d');
+      makeChart(sCtx, {
+        type: 'bar',
+        data: { labels: subjTop.map(([k])=>k), datasets: [{ label:'Count', data: subjTop.map(([,c])=>c) }] },
+        options: { indexAxis:'y', scales: { x:{ beginAtZero:true } } }
+      });
+    }
   }
 
   function doSearch(q){
@@ -171,9 +276,11 @@ function renderLibrary(){
       .then(data => {
         const items = (data && Array.isArray(data.results)) ? data.results : [];
         renderResults(items);
+    updateLoCVisuals(items);
       })
       .catch(err => {
         results.innerHTML = `<div class="small" style="color:#ef4444;">Error: ${err && err.message ? err.message : 'Request failed'}</div>`;
+    kpiRow.innerHTML = '';
       });
   }
 
